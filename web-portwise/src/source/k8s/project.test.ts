@@ -37,15 +37,28 @@ describe("projectPort", () => {
     expect(berths(b)).toEqual(berths(a));
   });
 
-  it("anchors nodes beyond the berth count", () => {
-    const count = K8S_PORT_MAPPING.berths.count;
-    const name = (i: number): string => `node-${String(i).padStart(2, "0")}`;
-    const nodes = Array.from({ length: count + 2 }, (_, i) => node(name(i)));
-    const p = projectPort(listed({ nodes }));
-    const anchored = p.vessels.filter((v) => v.berth === 0);
-    expect(anchored.map((v) => [v.name, v.anchorSlot])).toEqual([[name(count), 0], [name(count + 1), 1]]);
-    expect(p.cranes).toHaveLength(count);
+  const nodeNames = (count: number): string[] => Array.from({ length: count }, (_, i) => `node-${String(i).padStart(2, "0")}`);
+
+  it.each([0, 1, 5, 12])("lays out one berth per node for %i nodes, none at anchor", (count) => {
+    const p = projectPort(listed({ nodes: nodeNames(count).map((n) => node(n)) }));
+    expect(p.berths.map((b) => b.n)).toEqual(Array.from({ length: count }, (_, i) => i + 1));
+    expect(p.vessels.every((v) => v.berth > 0 && v.anchorSlot === undefined)).toBe(true);
+    expect(p.cranes).toHaveLength(count * K8S_PORT_MAPPING.berths.cranesPerBerth);
     expect(p.cranes.every((c) => c.vesselId)).toBe(true);
+  });
+
+  it("keeps hulls within their berth when the quay is crowded", () => {
+    const p = projectPort(listed({ nodes: nodeNames(12).map((n) => node(n, "1", { cpu: "64" })) }));
+    const length = p.berths[0].length;
+    expect(p.vessels.every((v) => v.length <= length * K8S_PORT_MAPPING.berths.vesselShare)).toBe(true);
+  });
+
+  it("recomputes berths from sorted names when a node joins or leaves", () => {
+    const berthsOf = (names: string[]) => Object.fromEntries(projectPort(listed({ nodes: names.map((n) => node(n)) })).vessels.map((v) => [v.name, v.berth]));
+    expect(berthsOf(["node-c", "node-a"])).toEqual({ "node-a": 1, "node-c": 2 });
+    expect(berthsOf(["node-c", "node-a", "node-d"])).toEqual({ "node-a": 1, "node-c": 2, "node-d": 3 });
+    expect(berthsOf(["node-c", "node-a", "node-b"])).toEqual({ "node-a": 1, "node-b": 2, "node-c": 3 });
+    expect(berthsOf(["node-c"])).toEqual({ "node-c": 1 });
   });
 
   it("maps namespaces to blocks and pods to containers coloured by phase", () => {
@@ -121,7 +134,7 @@ describe("projectPort", () => {
   });
 
   it("marks a crane active from recorded scheduling activity", () => {
-    const s = listed({ nodes: [node("node-a")] });
+    const s = listed({ nodes: [node("node-a"), node("node-b")] });
     const p = projectPort(s, { "node-a": { activeFrom: 1000, lastMoveAt: 2000, moves: 3 } });
     expect(p.cranes[0].activity).toEqual({ activeFrom: 1000, activeUntil: 2000 + K8S_PORT_MAPPING.crane.activeWindowMs, moves: 3 });
     expect(p.cranes[1].activity?.activeUntil).toBe(0);

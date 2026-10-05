@@ -1,5 +1,5 @@
 import type { Alert, CraneActivity, Container, DetailRow, QuayCrane, Selection, StatusTone, Vessel, YardBlock } from "@/data/types";
-import { BAY_PITCH, BLOCK_BAYS, BLOCK_HALF_X, BLOCK_HALF_Z, BLOCK_ROWS, BLOCK_TIERS, CONTAINER_H, ROW_PITCH, berthX } from "@/data/layout";
+import { BAY_PITCH, BLOCK_BAYS, BLOCK_HALF_X, BLOCK_HALF_Z, BLOCK_ROWS, BLOCK_TIERS, CONTAINER_H, ROW_PITCH, craneXs, layoutBerths } from "@/data/layout";
 import { YARD_BLOCKS } from "@/data/port";
 import { assignBerths, assignSlots, naturalCompare, stableHash } from "../assign";
 import type { KpiReading, PortSnapshot } from "../model";
@@ -103,7 +103,10 @@ export function projectPort(state: ClusterState, activity: BerthActivity = {}, m
     podsByNs.set(ns, [...(podsByNs.get(ns) ?? []), p]);
   }
 
-  const { berths, anchored } = assignBerths(nodes.map(nodeName), m.berths.count);
+  const berthOf = assignBerths(nodes.map(nodeName));
+  const berths = layoutBerths(berthOf.size);
+  const perBerth = m.berths.cranesPerBerth;
+  const craneIdsAt = (berth: number): string[] => Array.from({ length: perBerth }, (_, k) => `${m.ids.crane}${pad2((berth - 1) * perBerth + k + 1)}`);
   const vessels: Vessel[] = nodes.map((node) => {
     const name = nodeName(node);
     const st = nodeState(node, m);
@@ -112,7 +115,8 @@ export function projectPort(state: ClusterState, activity: BerthActivity = {}, m
     const podCap = parseQuantity(node.status?.allocatable?.pods) ?? 110;
     const cpu = node.status?.allocatable?.cpu ?? "?";
     const info = node.status?.nodeInfo;
-    const berth = berths.get(name) ?? 0;
+    const berth = berthOf.get(name) ?? 0;
+    const room = (berths[berth - 1]?.length ?? Infinity) * m.berths.vesselShare;
     const details: DetailRow[] = [
       { label: "Node", value: name },
       { label: "Status", value: st.headline },
@@ -141,24 +145,24 @@ export function projectPort(state: ClusterState, activity: BerthActivity = {}, m
       eta: "",
       etb: "",
       etd: "",
-      cranes: berth ? [`${m.ids.crane}${pad2(berth)}`] : [],
+      cranes: berth ? craneIdsAt(berth) : [],
       hull: m.vessel.hulls[stableHash(name) % m.vessel.hulls.length],
-      length: vesselLength(node, m),
+      length: Math.min(vesselLength(node, m), room),
       inScene: true,
-      anchorSlot: berth ? undefined : anchored.indexOf(name),
       meta: { sourceId: node.metadata.uid, headline: st.headline, tone: st.tone, fill: clamp01(onNode.length / podCap), details },
     };
   });
 
   const vesselAtBerth = new Map(vessels.filter((v) => v.berth > 0).map((v) => [v.berth, v]));
-  const cranes: QuayCrane[] = Array.from({ length: m.berths.count }, (_, i) => {
-    const berth = i + 1;
+  const cranes: QuayCrane[] = berths.flatMap((b) => {
+    const xs = craneXs(b, perBerth);
+    return craneIdsAt(b.n).map((id, k) => ({ id, x: xs[k], berth: b.n }));
+  }).map(({ id, x, berth }) => {
     const vessel = vesselAtBerth.get(berth);
     const act = vessel ? toCraneActivity(activity[vessel.name], m.crane.activeWindowMs) : IDLE;
-    const id = `${m.ids.crane}${pad2(berth)}`;
     return {
       id,
-      x: berthX(berth),
+      x,
       berth,
       vesselId: vessel?.id,
       mode: "idle",
@@ -322,6 +326,7 @@ export function projectPort(state: ClusterState, activity: BerthActivity = {}, m
 
   return {
     source: "live",
+    berths,
     vessels,
     cranes,
     blocks,

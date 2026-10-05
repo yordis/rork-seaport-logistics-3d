@@ -1,5 +1,5 @@
-import type { Alert, BerthBooking, QuayCrane, RoutePoint, Truck, Vessel, YardBlock } from "./types";
-import { BLOCK_COL_X, BLOCK_ROW_Z, GATE_X } from "./layout";
+import type { Alert, Berth, BerthBooking, QuayCrane, RoutePoint, Truck, Vessel, YardBlock } from "./types";
+import { BLOCK_COL_X, BLOCK_ROW_Z, GATE_X, layoutBerths } from "./layout";
 import { AVE_N, AVE_S } from "./facilities";
 import { DRAYAGE_TRUCKS } from "./drayage";
 
@@ -7,6 +7,7 @@ export const PORT_NAME = "Pasir Panjang Terminal";
 /** Port authority / city shown alongside the terminal name. */
 export const PORT_CITY = "Port of Singapore";
 export const BERTH_COUNT = 8;
+export const BERTHS: Berth[] = layoutBerths(BERTH_COUNT);
 export const CARRIER_NAME = "Seastar Lines";
 
 export const VESSELS: Vessel[] = [

@@ -1,4 +1,4 @@
-import type { Alert, Container, QuayCrane, Shipment, StatusTone, Vessel, YardBlock } from "@/data/types";
+import type { Alert, Berth, Container, QuayCrane, Shipment, StatusTone, Vessel, YardBlock } from "@/data/types";
 
 export type SourceKind = "simulation" | "live";
 
@@ -29,6 +29,8 @@ export interface YardOverflow {
 /** Everything the port UI renders, independent of where the data came from. */
 export interface PortSnapshot {
   source: SourceKind;
+  /** Berths along the quay, in order; the source decides how many exist. */
+  berths: Berth[];
   vessels: Vessel[];
   cranes: QuayCrane[];
   blocks: YardBlock[];

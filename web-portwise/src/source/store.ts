@@ -113,6 +113,8 @@ function indexOf(port: PortSnapshot): PortIndex {
   return idx;
 }
 
+/** Centre x of a berth in the active source's quay layout. */
+export const berthXOf = (n: number, port: PortSnapshot = currentPort()): number => port.berths[n - 1]?.x ?? port.berths[0]?.x ?? 0;
 export const findVessel = (id: string | undefined, port: PortSnapshot = currentPort()): Vessel | undefined => (id ? indexOf(port).vessels.get(id) : undefined);
 export const findCrane = (id: string | undefined, port: PortSnapshot = currentPort()): QuayCrane | undefined => (id ? indexOf(port).cranes.get(id) : undefined);
 export const findBlock = (id: string | undefined, port: PortSnapshot = currentPort()): YardBlock | undefined => (id ? indexOf(port).blocks.get(id) : undefined);

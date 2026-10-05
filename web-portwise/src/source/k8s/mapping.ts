@@ -1,6 +1,5 @@
 import type { BlockCategory, Severity, StatusTone, VesselStatus } from "@/data/types";
 import { CONTAINER_COLORS } from "@/data/layout";
-import { BERTH_COUNT } from "@/data/port";
 import type { PodPhase } from "./types";
 
 export interface PhaseStyle {
@@ -36,7 +35,11 @@ export interface CategoryRule {
  */
 export const K8S_PORT_MAPPING = {
   ids: { vessel: "node-", crane: "QC-" },
-  berths: { count: BERTH_COUNT },
+  berths: {
+    /** Share of a berth's length a hull may take, so compressed berths keep a gap between ships. */
+    vesselShare: 0.88,
+    cranesPerBerth: 1,
+  },
   vessel: {
     line: "Cluster node",
     /** Allocatable CPU (cores) sets the hull length; nodes without it fall back to pod capacity. */

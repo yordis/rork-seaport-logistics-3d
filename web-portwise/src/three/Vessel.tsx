@@ -4,7 +4,7 @@ import { useFrame } from "@react-three/fiber";
 import { Outlines, Text } from "@react-three/drei";
 import type { StatusTone, Vessel } from "@/data/types";
 import type { AnchorageQueue } from "@/source/model";
-import { ANCHOR_ORIGIN, COLORS, CONTAINER_COLORS, SHIP_Z, WATER_Y, anchorPosition, berthX } from "@/data/layout";
+import { ANCHOR_ORIGIN, COLORS, CONTAINER_COLORS, SHIP_Z, WATER_Y, anchorPosition } from "@/data/layout";
 import { mulberry32 } from "@/data/containers";
 import { fmtClock, sceneRegistry, sim, simT, useSimTick } from "@/sim/simStore";
 import { aisFix, newFix } from "@/sim/ais/tracker";
@@ -17,6 +17,7 @@ import type { ChipTone } from "./Chip3D";
 import { FONT_URL } from "./Terrain";
 import { Glow, LIGHT, Pool, litMat } from "./nightLights";
 import { usePort } from "@/state/PortProvider";
+import { berthXOf, usePortSnapshot } from "@/source/store";
 
 const BEAM = 7.6;
 const HULL_H = 4.2;
@@ -289,6 +290,7 @@ function VesselLabel({ vessel, y }: { vessel: Vessel; y: number }) {
 /** A ship moored alongside its berth. */
 export function BerthedVessel({ vessel }: { vessel: Vessel }) {
   const group = useRef<THREE.Group>(null);
+  const port = usePortSnapshot();
   useEffect(() => {
     const g = group.current;
     if (g) sceneRegistry.set(`vessel:${vessel.id}`, g);
@@ -301,7 +303,7 @@ export function BerthedVessel({ vessel }: { vessel: Vessel }) {
     if (group.current) group.current.position.y = WATER_Y + Math.sin(simT() * 0.6 + vessel.berth) * 0.05;
   });
   return (
-    <group ref={group} position={[berthX(vessel.berth), WATER_Y, SHIP_Z]}>
+    <group ref={group} position={[berthXOf(vessel.berth, port), WATER_Y, SHIP_Z]}>
       <Selectable sel={{ kind: "vessel", id: vessel.id }}>
         <ShipModel length={vessel.length} hull={vessel.hull} name={vessel.short} seed={vessel.berth * 31} fill={fill} />
       </Selectable>

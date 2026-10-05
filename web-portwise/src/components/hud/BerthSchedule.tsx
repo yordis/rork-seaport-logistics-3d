@@ -75,6 +75,11 @@ export function BerthSchedule(props: BerthScheduleProps) {
   return port.source === "live" ? <BerthBoard focusBerth={props.focusBerth} /> : <SimBerthSchedule {...props} />;
 }
 
+const BOARD_MAX_COLS = 6;
+
+/** Fewest rows of at most six, balanced so the last row is never left mostly empty. */
+const boardColumns = (count: number): number => (count <= 0 ? 1 : Math.ceil(count / Math.ceil(count / BOARD_MAX_COLS)));
+
 /** Berths as they stand right now, for sources without a schedule. */
 function BerthBoard({ focusBerth }: { focusBerth?: number }) {
   useSimTick();
@@ -93,8 +98,12 @@ function BerthBoard({ focusBerth }: { focusBerth?: number }) {
           All vessels <ArrowRight className="h-3.5 w-3.5" />
         </Link>
       </div>
-      <ul className="mt-2 grid grid-cols-1 gap-1.5 sm:grid-cols-2 xl:grid-cols-4">
-        {Array.from({ length: BERTH_COUNT }, (_, i) => i + 1).map((berth) => {
+      {port.berths.length ? null : <p className="mt-2 text-[12.5px] text-slate">No berths yet. Waiting for nodes from the data source.</p>}
+      <ul
+        className="mt-2 grid grid-cols-1 gap-1.5 sm:grid-cols-2 xl:grid-cols-[repeat(var(--cols),minmax(0,1fr))]"
+        style={{ "--cols": boardColumns(port.berths.length) } as React.CSSProperties}
+      >
+        {port.berths.map(({ n: berth }) => {
           const v = port.vessels.find((x) => x.berth === berth);
           const crane = port.cranes.find((c) => c.berth === berth);
           const working = crane ? craneStatus(crane, 0).state === "active" : false;

@@ -14,20 +14,9 @@ export function naturalCompare(a: string, b: string): number {
   return x.length - y.length || byName(a, b);
 }
 
-export interface BerthAssignment {
-  /** 1-based berth number per name. */
-  berths: ReadonlyMap<string, number>;
-  /** Names beyond the berth count, in queue order. */
-  anchored: readonly string[];
-}
-
-/** Names take berths in sorted order, so the same set always lands on the same berths regardless of arrival order. */
-export function assignBerths(names: Iterable<string>, berthCount: number): BerthAssignment {
-  const sorted = [...new Set(names)].sort(byName);
-  return {
-    berths: new Map(sorted.slice(0, berthCount).map((n, i) => [n, i + 1])),
-    anchored: sorted.slice(berthCount),
-  };
+/** One berth per name, numbered from 1 in sorted order, so the same set always lands on the same berths regardless of arrival order. */
+export function assignBerths(names: Iterable<string>): ReadonlyMap<string, number> {
+  return new Map([...new Set(names)].sort(byName).map((n, i) => [n, i + 1]));
 }
 
 export interface SlotAssignment {

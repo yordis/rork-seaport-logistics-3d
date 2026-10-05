@@ -2,21 +2,14 @@ import { describe, expect, it } from "vitest";
 import { assignBerths, assignSlots, naturalCompare, stableHash } from "./assign";
 
 describe("assignBerths", () => {
-  it("assigns berths by sorted name, independent of input order", () => {
-    const a = assignBerths(["node-c", "node-a", "node-b"], 8);
-    const b = assignBerths(["node-b", "node-c", "node-a"], 8);
-    expect([...a.berths]).toEqual([["node-a", 1], ["node-b", 2], ["node-c", 3]]);
-    expect([...b.berths]).toEqual([...a.berths]);
-  });
-
-  it("sends nodes beyond the berth count to the anchorage in order", () => {
-    const r = assignBerths(["node-d", "node-a", "node-c", "node-b"], 2);
-    expect([...r.berths.keys()]).toEqual(["node-a", "node-b"]);
-    expect(r.anchored).toEqual(["node-c", "node-d"]);
+  it("gives every name a berth in sorted order, independent of input order", () => {
+    const a = assignBerths(["node-c", "node-a", "node-b"]);
+    expect([...a]).toEqual([["node-a", 1], ["node-b", 2], ["node-c", 3]]);
+    expect([...assignBerths(["node-b", "node-c", "node-a"])]).toEqual([...a]);
   });
 
   it("deduplicates names", () => {
-    expect(assignBerths(["node-a", "node-a"], 8).berths.size).toBe(1);
+    expect(assignBerths(["node-a", "node-a"]).size).toBe(1);
   });
 });
 

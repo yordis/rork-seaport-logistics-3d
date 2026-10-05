@@ -1,3 +1,5 @@
+import type { Berth } from "./types";
+
 /** World layout constants. Water lies at z > QUAY_Z, land at z < QUAY_Z. +x points right on screen. */
 export const QUAY_Z = 20;
 export const WATER_Y = -1.4;
@@ -13,6 +15,32 @@ export const berthX = (berth: number): number => -175 + (berth - 1) * BERTH_SPAC
 /** Quay extent along x. */
 export const QUAY_MIN_X = -212;
 export const QUAY_MAX_X = 212;
+export const QUAY_MARGIN = 12;
+
+/** Berths from the western end of the quay at the standard length, compressed only when they would not fit. */
+export function layoutBerths(count: number): Berth[] {
+  const n = Math.max(0, Math.floor(count));
+  const length = Math.min(BERTH_SPACING, (QUAY_MAX_X - QUAY_MIN_X - 2 * QUAY_MARGIN) / Math.max(1, n));
+  return Array.from({ length: n }, (_, i) => ({ n: i + 1, x: QUAY_MIN_X + QUAY_MARGIN + length * (i + 0.5), length }));
+}
+
+/** The stretch of quay the berths occupy, including the end margins. */
+export function quayExtent(berths: readonly Berth[]): [number, number] {
+  if (!berths.length) return [QUAY_MIN_X, QUAY_MIN_X];
+  const first = berths[0];
+  const last = berths[berths.length - 1];
+  return [Math.max(QUAY_MIN_X, first.x - first.length / 2 - QUAY_MARGIN), Math.min(QUAY_MAX_X, last.x + last.length / 2 + QUAY_MARGIN)];
+}
+
+/** Crane positions spread across a berth, centred on it. */
+export const craneXs = (berth: Berth, perBerth: number): number[] =>
+  Array.from({ length: perBerth }, (_, k) => berth.x + (k - (perBerth - 1) / 2) * (berth.length / Math.max(2, perBerth + 1)));
+
+/** Shifts a shot authored for the full quay so it stays centred on the berths in use. */
+export const quayShotX = (authoredX: number, berths: readonly Berth[]): number => {
+  const [lo, hi] = quayExtent(berths);
+  return berths.length ? authoredX + (lo + hi) / 2 - (QUAY_MIN_X + QUAY_MAX_X) / 2 : authoredX;
+};
 
 export const CONTAINER_L = 3.0;
 export const CONTAINER_W = 1.3;

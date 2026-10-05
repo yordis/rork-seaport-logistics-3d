@@ -6,7 +6,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { cn } from "@/lib/utils";
 import { SIM_START_SEC, fmtClock, timeControl, useClock } from "@/sim/simStore";
 import { usePort } from "@/state/PortProvider";
-import { BERTH_COUNT, CARRIER_NAME, PORT_NAME } from "@/data/port";
+import { CARRIER_NAME, PORT_NAME } from "@/data/port";
 import { usePortSnapshot } from "@/source/store";
 import { AlertRow } from "./AlertsPanel";
 import { SourceToggle } from "./SourceToggle";
@@ -113,7 +113,7 @@ export function TopBar() {
           <DropdownMenuContent align="end" className="w-64">
             <DropdownMenuLabel className="text-[11px] uppercase tracking-wider text-slate">Authorized terminals</DropdownMenuLabel>
             <DropdownMenuItem className="flex items-center justify-between font-semibold">
-              {PORT_NAME} · {BERTH_COUNT} berths
+              {PORT_NAME} · {port.berths.length} berths
               <span className="text-[11px] font-medium text-moss">Viewing</span>
             </DropdownMenuItem>
             <DropdownMenuSeparator />

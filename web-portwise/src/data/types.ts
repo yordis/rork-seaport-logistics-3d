@@ -19,6 +19,13 @@ export interface EntityMeta {
 
 export type VesselStatus = "discharging" | "loading" | "arriving" | "scheduled";
 
+/** A berth along the quay: its 1-based number, centre on x and usable length. */
+export interface Berth {
+  n: number;
+  x: number;
+  length: number;
+}
+
 export interface Vessel {
   id: string;
   name: string;
