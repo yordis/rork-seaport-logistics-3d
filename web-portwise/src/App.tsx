@@ -10,11 +10,14 @@ import Overview from "./pages/Overview";
 import Vessels from "./pages/Vessels";
 import VesselDetail from "./pages/VesselDetail";
 import Yard from "./pages/Yard";
-import Shipment from "./pages/Shipment";
+import Shipment, { ShipmentsIndex } from "./pages/Shipment";
 import Logistics from "./pages/Logistics";
+import { usePortSnapshot } from "@/source/store";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
+
+const LogisticsRoute = () => (usePortSnapshot().logistics ? <Logistics /> : <Navigate to="/" replace />);
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -29,10 +32,10 @@ const App = () => (
               <Route path="/vessels/:id" element={<VesselDetail />} />
               <Route path="/yard" element={<Yard />} />
               <Route path="/yard/:blockId" element={<Yard />} />
-              <Route path="/shipments" element={<Navigate to="/shipments/SHP-20931" replace />} />
+              <Route path="/shipments" element={<ShipmentsIndex />} />
               <Route path="/shipments/:id" element={<Shipment />} />
-              <Route path="/logistics" element={<Logistics />} />
-              <Route path="/logistics/:id" element={<Logistics />} />
+              <Route path="/logistics" element={<LogisticsRoute />} />
+              <Route path="/logistics/:id" element={<LogisticsRoute />} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>

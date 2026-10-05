@@ -3,6 +3,7 @@ import { Truck as TruckIcon, X } from "lucide-react";
 import { truckById } from "@/data/port";
 import { sim, simElapsedMin, useSimTick } from "@/sim/simStore";
 import { usePort } from "@/state/PortProvider";
+import { findShipment, usePortSnapshot } from "@/source/store";
 import { DefRow, IconButton, Panel, PanelHeader, StatusChip } from "./primitives";
 import type { Tone } from "./primitives";
 
@@ -14,6 +15,7 @@ export const truckStatusTone = (status: string): Tone => {
 };
 
 export function TruckCard({ id }: { id: string }) {
+  const port = usePortSnapshot();
   useSimTick();
   const { closeOverride } = usePort();
   const truck = truckById(id);
@@ -46,7 +48,7 @@ export function TruckCard({ id }: { id: string }) {
         </DefRow>
         {truck.trip ? (
           <DefRow label="Run" mono={false}>
-            {truck.facilityId ? (
+            {truck.facilityId && port.logistics ? (
               <Link to={`/logistics/${truck.facilityId}`} className="text-harbor underline-offset-2 hover:underline">
                 {truck.trip}
               </Link>
@@ -58,7 +60,7 @@ export function TruckCard({ id }: { id: string }) {
         {truck.gate ? <DefRow label="Gate lane" mono={false}>{truck.gate}</DefRow> : null}
         {truck.kind === "drayage" ? null : <DefRow label="Time in terminal">{minutes} min</DefRow>}
         <DefRow label="Type">{truck.kind === "itv" ? "ITV tractor" : "Tractor + 40' chassis"}</DefRow>
-        {truck.shipmentId ? (
+        {truck.shipmentId && findShipment(truck.shipmentId, port) ? (
           <DefRow label="Shipment">
             <Link to={`/shipments/${truck.shipmentId}`} className="text-harbor underline-offset-2 hover:underline">
               #{truck.shipmentId}

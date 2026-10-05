@@ -27,6 +27,7 @@ Watch vessels arrive, quay cranes work, yard blocks fill up, trucks clear the ga
 - [Tech stack](#tech-stack)
 - [Getting started](#getting-started)
 - [Available scripts](#available-scripts)
+- [Live cluster mode](#live-cluster-mode)
 - [Project structure](#project-structure)
 - [Architecture](#architecture)
   - [One sim clock for everything](#one-sim-clock-for-everything)
@@ -192,7 +193,7 @@ bun run build      # outputs to web-portwise/dist
 bun run preview    # serves the production build locally
 ```
 
-No environment variables are needed. The app is fully static.
+No environment variables are needed. The app is fully static. Only the optional [live cluster mode](#live-cluster-mode) talks to a server.
 
 ---
 
@@ -207,6 +208,7 @@ Run these from `web-portwise/`:
 | `bun run build:dev` | Build in development mode (unminified, easier to debug) |
 | `bun run preview` | Serve the built `dist/` locally |
 | `bun run lint` | Run ESLint over the project |
+| `bun run k8s:proxy` | Read-only `kubectl proxy` on port 8001 for [live cluster mode](#live-cluster-mode); needs `KUBE_CONTEXT` |
 | `bun run test` | Run unit tests, then browser tests |
 | `bun run test:watch` | Unit tests in watch mode |
 | `bun run test:browser` | Browser tests (Vitest + Playwright Chromium) in watch mode |
@@ -216,6 +218,52 @@ Type check only:
 ```bash
 bun x tsc -p tsconfig.app.json --noEmit
 ```
+
+---
+
+## Live cluster mode
+
+The simulation is the default. The **Simulation / Live cluster** switch in the top bar swaps it for a read-only view of a Kubernetes cluster. The choice is remembered per browser.
+
+### Run it
+
+In one terminal, start a read-only API proxy for the context you want to view:
+
+```bash
+cd web-portwise
+KUBE_CONTEXT=my-cluster bun run k8s:proxy
+```
+
+In another, start the app and pick **Live cluster** in the top bar:
+
+```bash
+bun run dev
+```
+
+The browser never sees credentials. The Vite dev server forwards `/k8s/*` to the proxy, and `kubectl proxy` signs requests with your local kubeconfig. The proxy rejects `POST`, `PUT`, `PATCH`, `DELETE` and `CONNECT`, and the app only issues `GET` list and watch requests.
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `KUBE_CONTEXT` | none, required | kubeconfig context for `bun run k8s:proxy` |
+| `K8S_PROXY_URL` | `http://127.0.0.1:8001` | Where the dev server forwards `/k8s/*` |
+| `VITE_K8S_API_BASE` | `/k8s` | API base URL the browser calls |
+
+The status pill next to the switch shows **Connecting**, **Live**, **Error** or **Start kubectl proxy** when the API is unreachable. Hover it for the reason. The time bar's rewind and scrub controls are off in live mode, since a watch stream only has the present.
+
+### How the cluster reads as a port
+
+| Cluster | Port |
+| --- | --- |
+| Node | Vessel at one of the 8 berths, in name order; extra nodes wait at the anchorage |
+| Namespace | Yard block; the 40 busiest get a block, the rest are summarised |
+| Pod | Container in its namespace's block, coloured by phase |
+| Pending or unscheduled pod | Counted on the anchorage marker |
+| Pod scheduled onto a node | The quay crane at that node's berth starts working |
+| Warning event | Alert, linked to the node, pod or namespace it concerns |
+
+The whole mapping is data in `web-portwise/src/source/k8s/mapping.ts`. `src/source/k8s/project.ts` applies it to the cluster state kept by the reducer in `src/source/k8s/reducer.ts`. The 3D scene and HUD only see the resulting port model in `src/source/model.ts`, so changing what a namespace or node becomes never touches rendering code.
+
+Simulation-only features, such as shipments, AIS strait traffic, trucks and the logistics district, keep running from the simulation in live mode.
 
 ---
 

@@ -11,6 +11,7 @@ import { Glow, LIGHT, litMat } from "../nightLights";
 import { FONT_URL, Fence, Flat, GroundLabel, InstMesh, Lot, Mast, Office, Shed, coneGeo, truckParts } from "./kit";
 import type { Inst } from "./kit";
 import { usePort } from "@/state/PortProvider";
+import { usePortSnapshot } from "@/source/store";
 import { RailIcd } from "./RailIcd";
 import { SCAN } from "@/sim/logistics";
 
@@ -32,7 +33,9 @@ const KIND_TONE: Record<string, ChipTone> = {
 function FacilityShell({ id, children }: { id: string; children: ReactNode }) {
   const f = facilityById(id);
   const { selection, hovered, view, open } = usePort();
+  const interactive = usePortSnapshot().logistics;
   if (!f) return null;
+  if (!interactive) return <group>{children}</group>;
   const selected = selection?.kind === "facility" && selection.id === id;
   const hot = hovered?.kind === "facility" && hovered.id === id;
   const show = selected || hot || view === "logistics";

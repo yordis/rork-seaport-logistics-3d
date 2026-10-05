@@ -68,3 +68,13 @@ export const CONTAINER_COLORS = {
   steel: "#4F6D8F",
   reefer: "#EDEBE4",
 } as const;
+
+/** Western Anchorage moorings for ships waiting without a berth, filled in queue order. */
+export const ANCHOR_ORIGIN: [number, number] = [470, 226];
+const ANCHOR_COLS = 4;
+const ANCHOR_PITCH: [number, number] = [34, 18];
+
+export const anchorPosition = (slot: number): [number, number] => [
+  ANCHOR_ORIGIN[0] + (slot % ANCHOR_COLS) * ANCHOR_PITCH[0],
+  ANCHOR_ORIGIN[1] + Math.floor(slot / ANCHOR_COLS) * ANCHOR_PITCH[1],
+];

@@ -1,5 +1,22 @@
 export type Severity = "danger" | "warning" | "info" | "success";
 
+export type StatusTone = "signal" | "moss" | "amber" | "brick" | "harbor" | "slate";
+
+export interface DetailRow {
+  label: string;
+  value: string;
+}
+
+/** Source-provided readout for an entity: when present, the HUD shows it instead of simulated figures. */
+export interface EntityMeta {
+  sourceId: string;
+  headline: string;
+  tone: StatusTone;
+  /** 0..1, how full the entity is (deck load, block occupancy). */
+  fill: number;
+  details: DetailRow[];
+}
+
 export type VesselStatus = "discharging" | "loading" | "arriving" | "scheduled";
 
 export interface Vessel {
@@ -27,6 +44,9 @@ export interface Vessel {
   /** Rendered in the 3D scene */
   inScene: boolean;
   delayMin?: number;
+  /** Position in the anchorage queue for vessels without a berth (berth 0). */
+  anchorSlot?: number;
+  meta?: EntityMeta;
 }
 
 export interface BerthBooking {
@@ -52,6 +72,17 @@ export interface QuayCrane {
   model: string;
   operator: string;
   reason?: string;
+  /** Event-driven work instead of a scripted shift: the crane runs while moves keep arriving. */
+  activity?: CraneActivity;
+  meta?: EntityMeta;
+}
+
+export interface CraneActivity {
+  /** Epoch ms of the first move in the current burst of work. */
+  activeFrom: number;
+  /** Epoch ms the crane stands down unless another move arrives, 0 when none was seen. */
+  activeUntil: number;
+  moves: number;
 }
 
 export type BlockCategory = "import" | "export" | "reefer";
@@ -63,6 +94,7 @@ export interface YardBlock {
   category: BlockCategory;
   fill: number;
   capacity: number;
+  meta?: EntityMeta;
 }
 
 export interface Alert {
@@ -71,7 +103,7 @@ export interface Alert {
   title: string;
   detail: string;
   time: string;
-  target: Selection;
+  target?: Selection;
 }
 
 export interface RoutePoint {
@@ -131,6 +163,7 @@ export interface Container {
   vesselId: string;
   customs: "Cleared" | "Inspection hold" | "Declaring";
   shipmentId: string;
+  meta?: EntityMeta;
 }
 
 export interface ShipmentStep {
@@ -138,8 +171,16 @@ export interface ShipmentStep {
   time: string;
 }
 
+/** A shipment that cannot progress until something outside the terminal is fixed. */
+export interface ShipmentHold {
+  severity: Severity;
+  reason: string;
+}
+
 export interface Shipment {
   id: string;
+  /** Display name when the id is not meant for people. */
+  label?: string;
   direction: "import" | "export";
   containerIds: string[];
   vesselId: string;
@@ -150,4 +191,6 @@ export interface Shipment {
   steps: ShipmentStep[];
   current: number;
   truckId?: string;
+  hold?: ShipmentHold;
+  meta?: EntityMeta;
 }

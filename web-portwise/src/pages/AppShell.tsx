@@ -8,6 +8,7 @@ import { useIsCompact } from "@/hooks/useMediaQuery";
 import { usePort } from "@/state/PortProvider";
 import { useBootRevealed } from "@/state/boot";
 import { installTapHaptics } from "@/lib/haptics";
+import { useLiveConnection } from "@/source/store";
 
 const PortScene = lazy(() => import("@/three/PortScene"));
 
@@ -17,6 +18,7 @@ export default function AppShell() {
   const { closeOverride } = usePort();
   const isRevealed = useBootRevealed();
   const isCompact = useIsCompact();
+  useLiveConnection();
 
   useEffect(() => installTapHaptics(), []);
 

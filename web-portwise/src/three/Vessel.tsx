@@ -2,8 +2,9 @@ import { memo, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { useFrame } from "@react-three/fiber";
 import { Outlines, Text } from "@react-three/drei";
-import type { Vessel } from "@/data/types";
-import { COLORS, CONTAINER_COLORS, SHIP_Z, WATER_Y, berthX } from "@/data/layout";
+import type { StatusTone, Vessel } from "@/data/types";
+import type { AnchorageQueue } from "@/source/model";
+import { ANCHOR_ORIGIN, COLORS, CONTAINER_COLORS, SHIP_Z, WATER_Y, anchorPosition, berthX } from "@/data/layout";
 import { mulberry32 } from "@/data/containers";
 import { fmtClock, sceneRegistry, sim, simT, useSimTick } from "@/sim/simStore";
 import { aisFix, newFix } from "@/sim/ais/tracker";
@@ -219,12 +220,36 @@ function Tug({ color = "#2F5D4E" }: { color?: string }) {
 
 const fmtKn = (kn: number): string => `${kn.toFixed(1)} kn`;
 
+const chipTone = (tone: StatusTone): ChipTone => (tone === "slate" ? "ink" : tone);
+
+/** Deck load for the ship model: source-provided fill when present, otherwise the simulated cargo progress. */
+function deckFill(vessel: Vessel): () => number {
+  if (vessel.meta) {
+    const k = 0.1 + 0.9 * vessel.meta.fill;
+    return () => k;
+  }
+  return () => {
+    const live = sim.vessels[vessel.id];
+    if (vessel.status === "loading") return 0.25 + 0.75 * (live.loaded / vessel.loadTotal);
+    return 0.3 + 0.7 * (1 - live.discharged / vessel.dischargeTotal);
+  };
+}
+
 /** Floating label: cargo progress alongside, or the AIS movement state while the ship is on the move. */
 function VesselLabel({ vessel, y }: { vessel: Vessel; y: number }) {
   useSimTick();
   const { selection, view, open } = usePort();
   const selected = selection?.kind === "vessel" && selection.id === vessel.id;
   if (!(selected || view === "overview" || view === "vessels")) return null;
+  if (vessel.meta) {
+    return (
+      <Chip3D position={[0, y, 0]} tone={chipTone(vessel.meta.tone)} active={selected} onClick={() => open({ kind: "vessel", id: vessel.id })}>
+        <span className="font-mono">
+          {vessel.short} · {vessel.meta.headline} {Math.round(vessel.meta.fill * 100)}%
+        </span>
+      </Chip3D>
+    );
+  }
   const live = sim.vessels[vessel.id];
   const call = sim.calls[vessel.id];
   let text = vessel.short;
@@ -271,14 +296,7 @@ export function BerthedVessel({ vessel }: { vessel: Vessel }) {
       sceneRegistry.delete(`vessel:${vessel.id}`);
     };
   }, [vessel.id]);
-  const fill = useMemo(
-    () => () => {
-      const live = sim.vessels[vessel.id];
-      if (vessel.status === "loading") return 0.25 + 0.75 * (live.loaded / vessel.loadTotal);
-      return 0.3 + 0.7 * (1 - live.discharged / vessel.dischargeTotal);
-    },
-    [vessel],
-  );
+  const fill = useMemo(() => deckFill(vessel), [vessel]);
   useFrame(() => {
     if (group.current) group.current.position.y = WATER_Y + Math.sin(simT() * 0.6 + vessel.berth) * 0.05;
   });
@@ -313,14 +331,7 @@ export function PortCallVessel({ vessel }: { vessel: Vessel }) {
   const wake = useRef<number>(0);
   const fix = useMemo(newFix, []);
   const call = useMemo(() => portCall(vessel.id), [vessel.id]);
-  const fill = useMemo(
-    () => () => {
-      const live = sim.vessels[vessel.id];
-      if (vessel.status === "loading") return 0.25 + 0.75 * (live.loaded / vessel.loadTotal);
-      return 0.3 + 0.7 * (1 - live.discharged / vessel.dischargeTotal);
-    },
-    [vessel],
-  );
+  const fill = useMemo(() => deckFill(vessel), [vessel]);
 
   useEffect(() => {
     const g = group.current;
@@ -458,6 +469,56 @@ export function ChannelTraffic() {
           </group>
         ))}
       </group>
+    </group>
+  );
+}
+
+/** A ship riding at anchor while it waits for a berth. */
+export function AnchoredVessel({ vessel }: { vessel: Vessel }) {
+  const group = useRef<THREE.Group>(null);
+  const [x, z] = anchorPosition(vessel.anchorSlot ?? 0);
+  const fill = useMemo(() => deckFill(vessel), [vessel]);
+  useEffect(() => {
+    const g = group.current;
+    if (g) sceneRegistry.set(`vessel:${vessel.id}`, g);
+    return () => {
+      sceneRegistry.delete(`vessel:${vessel.id}`);
+    };
+  }, [vessel.id]);
+  useFrame(() => {
+    const g = group.current;
+    if (!g) return;
+    const t = simT();
+    g.position.y = WATER_Y + Math.sin(t * 0.7 + (vessel.anchorSlot ?? 0)) * 0.06;
+    g.rotation.y = 0.35 + Math.sin(t * 0.05 + (vessel.anchorSlot ?? 0)) * 0.08;
+  });
+  return (
+    <group ref={group} position={[x, WATER_Y, z]}>
+      <Selectable sel={{ kind: "vessel", id: vessel.id }}>
+        <ShipModel length={vessel.length} hull={vessel.hull} name={vessel.short} seed={(vessel.anchorSlot ?? 0) * 17 + vessel.length} fill={fill} />
+      </Selectable>
+      <VesselLabel vessel={vessel} y={DECK_Y + 9.5} />
+    </group>
+  );
+}
+
+/** Buoy with a count chip for work queued outside the port. */
+export function AnchorageMarker({ queue }: { queue: AnchorageQueue }) {
+  const ref = useRef<THREE.Group>(null);
+  useFrame(() => {
+    const g = ref.current;
+    if (!g) return;
+    const t = simT();
+    g.position.y = WATER_Y + 0.2 + Math.sin(t * 1.4) * 0.18;
+  });
+  return (
+    <group ref={ref} position={[ANCHOR_ORIGIN[0] - 40, WATER_Y, ANCHOR_ORIGIN[1] - 14]}>
+      <mesh geometry={unitCyl} material={mat(COLORS.amber)} scale={[2.2, 2.4, 2.2]} castShadow />
+      <mesh geometry={unitBox} material={mat(COLORS.ink)} position={[0, 2.4, 0]} scale={[0.8, 2.6, 0.8]} />
+      <Glow position={[0, 4.2, 0]} color={LIGHT.warm} size={3} blink={1.6} />
+      <Chip3D position={[0, 6.5, 0]} tone={chipTone(queue.tone)} pulse>
+        <span className="font-mono">{queue.label}</span>
+      </Chip3D>
     </group>
   );
 }

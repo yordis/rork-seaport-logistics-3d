@@ -1,13 +1,18 @@
-import { useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
-import { ArrowRight, Check, ChevronDown, Container as ContainerIcon, MapPin } from "lucide-react";
+import { AlertTriangle, ArrowRight, Check, ChevronDown, Container as ContainerIcon, MapPin } from "lucide-react";
 import { HudLayout } from "@/components/hud/HudLayout";
+import { MetaRows } from "@/components/hud/MetaRows";
 import { Panel, StatusChip } from "@/components/hud/primitives";
 import { truckStatusTone } from "@/components/hud/TruckCard";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { GATE_TRUCK_IDS, truckById, vesselById } from "@/data/port";
-import { FEATURED_SHIPMENT_IDS, containerById, shipmentById } from "@/data/containers";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { GATE_TRUCK_IDS, truckById } from "@/data/port";
+import { FEATURED_SHIPMENT_IDS, shipmentById } from "@/data/containers";
 import type { Shipment as ShipmentT } from "@/data/types";
+import type { PortSnapshot } from "@/source/model";
+import { findContainer, findShipment, findVessel, useConnectionStatus, usePortSnapshot } from "@/source/store";
 import { cn } from "@/lib/utils";
 import { sim, simElapsedMin, useSimTick } from "@/sim/simStore";
 import { usePort } from "@/state/PortProvider";
@@ -67,21 +72,112 @@ function GateTable() {
   );
 }
 
-function Journey({ s }: { s: ShipmentT }) {
+const SIM_DEFAULT_SHIPMENT = "SHP-20931";
+
+const isActive = (s: ShipmentT): boolean => !!s.hold || s.current < s.steps.length;
+
+const norm = (v: string): string => v.toLowerCase();
+
+/** Groups the source's shipments for the picker: active or held first, then one group per destination, keeping source order. */
+function pickerGroups(list: ShipmentT[], query: string): Array<{ heading: string; items: ShipmentT[] }> {
+  const q = norm(query.trim());
+  const hits = q ? list.filter((s) => norm(s.label ?? s.id).includes(q) || norm(s.destination).includes(q)) : list;
+  const active = hits.filter(isActive);
+  const byDestination = new Map<string, ShipmentT[]>();
+  hits.filter((s) => !isActive(s)).forEach((s) => byDestination.set(s.destination, [...(byDestination.get(s.destination) ?? []), s]));
+  return [...(active.length ? [{ heading: "In progress", items: active }] : []), ...Array.from(byDestination, ([heading, items]) => ({ heading, items }))];
+}
+
+function ShipmentPicker({ port, s }: { port: PortSnapshot; s: ShipmentT }) {
   const navigate = useNavigate();
-  const vessel = vesselById(s.vesselId);
-  const container = containerById(s.containerIds[0]);
-  const done = s.current >= s.steps.length;
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const groups = useMemo(() => pickerGroups(port.shipments ?? [], query), [port.shipments, query]);
+  const pick = (id: string) => {
+    setOpen(false);
+    setQuery("");
+    navigate(`/shipments/${id}`);
+  };
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger className="flex min-w-0 items-center gap-1.5 rounded-md font-mono text-[17px] font-bold text-ink hover:text-signal" title={s.label}>
+        <span className="truncate">{s.label ?? s.id}</span>
+        <ChevronDown className="h-4 w-4 shrink-0 text-slate" />
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-[min(380px,calc(100vw-24px))] p-0">
+        <Command shouldFilter={false}>
+          <CommandInput placeholder="Filter by name or namespace" value={query} onValueChange={setQuery} />
+          <CommandList className="scroll-thin max-h-[min(360px,50dvh)] overscroll-contain">
+            <CommandEmpty>No matches for “{query}”.</CommandEmpty>
+            {groups.map((g) => (
+              <CommandGroup key={g.heading} heading={g.heading}>
+                {g.items.map((item) => (
+                  <CommandItem key={item.id} value={item.id} onSelect={() => pick(item.id)} className={cn("flex items-center gap-2", item.id === s.id && "bg-signal-soft/60")}>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-mono text-[12.5px] font-semibold text-ink">{item.label ?? item.id}</span>
+                      <span className="block truncate text-[11.5px] text-slate">
+                        {isActive(item) ? `${item.destination} · ${item.sizeLabel}` : item.sizeLabel}
+                      </span>
+                    </span>
+                    {item.meta && isActive(item) ? (
+                      <StatusChip tone={item.meta.tone} pulse className="max-w-[120px] shrink-0">
+                        <span className="truncate">{item.meta.headline}</span>
+                      </StatusChip>
+                    ) : null}
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            ))}
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function ShipmentFacts({ s }: { s: ShipmentT }) {
+  if (!s.meta) return null;
+  return (
+    <Panel className="w-full shrink-0 p-4" aria-label={`Shipment ${s.label ?? s.id}`}>
+      <p className="eyebrow">{s.consignee}</p>
+      <h2 className="mt-0.5 break-all font-mono text-[15px] font-bold text-ink">{s.label ?? s.id}</h2>
+      {s.hold ? (
+        <p className="mt-2 flex items-center gap-2 rounded-[10px] bg-brick-soft px-3 py-2 text-[12.5px] font-semibold text-brick">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          On hold · {s.hold.reason}
+        </p>
+      ) : null}
+      <MetaRows meta={s.meta} className="mt-2" />
+    </Panel>
+  );
+}
+
+function Journey({ s, port }: { s: ShipmentT; port: PortSnapshot }) {
+  const navigate = useNavigate();
+  const vessel = findVessel(s.vesselId);
+  const container = findContainer(s.containerIds[0]);
+  const done = s.current >= s.steps.length && !s.hold;
+  const tracked = !!s.meta;
   return (
     <Panel className="flex flex-col gap-4 px-4 py-4 lg:flex-row lg:items-stretch lg:px-6" aria-label="Shipment journey">
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
           <h1 className="text-[17px] font-bold text-ink">Shipment journey</h1>
-          <p className="text-[12.5px] text-slate">{s.direction === "import" ? "Import" : "Export"} · live progress through the terminal</p>
+          <p className="text-[12.5px] text-slate">
+            {tracked ? (done ? "Settled" : "Rollout in progress") : s.direction === "import" ? "Import" : "Export"} · live progress through the terminal
+            {port.shipments ? (
+              <span className="ml-2 font-mono text-[11.5px] tnum">
+                {port.shipments.filter(isActive).length} active · {port.shipments.length} total
+              </span>
+            ) : null}
+          </p>
         </div>
         <div className="scroll-thin sm:overflow-x-auto">
           {/* Phones: vertical stepper. Wider: horizontal 6-step track. */}
-          <ol className="relative mt-4 grid grid-cols-1 gap-3 sm:mt-5 sm:min-w-[620px] sm:grid-cols-6 sm:gap-0">
+          <ol
+            className="relative mt-4 grid grid-cols-1 gap-3 sm:mt-5 sm:min-w-[620px] sm:grid-cols-[repeat(var(--steps),minmax(0,1fr))] sm:gap-0"
+            style={{ "--steps": s.steps.length } as React.CSSProperties}
+          >
             {s.steps.map((step, i) => {
               const state = i < s.current ? "done" : i === s.current ? "current" : "todo";
               return (
@@ -115,6 +211,9 @@ function Journey({ s }: { s: ShipmentT }) {
       </div>
       <div className="shrink-0 border-t border-hairline pt-4 lg:w-[320px] lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
         <div className="flex items-center justify-between gap-2">
+          {port.shipments ? (
+            <ShipmentPicker port={port} s={s} />
+          ) : (
           <DropdownMenu>
             <DropdownMenuTrigger className="flex items-center gap-1.5 rounded-md font-mono text-[20px] font-bold text-ink hover:text-signal">
               #{s.id}
@@ -129,13 +228,20 @@ function Journey({ s }: { s: ShipmentT }) {
               ))}
             </DropdownMenuContent>
           </DropdownMenu>
-          <StatusChip tone={done ? "moss" : "signal"} pulse={!done}>
-            {done ? "Completed" : "In progress"}
-          </StatusChip>
+          )}
+          {s.meta ? (
+            <StatusChip tone={s.meta.tone} pulse={!done} className="max-w-[150px] shrink-0">
+              <span className="truncate">{s.meta.headline}</span>
+            </StatusChip>
+          ) : (
+            <StatusChip tone={done ? "moss" : "signal"} pulse={!done}>
+              {done ? "Completed" : "In progress"}
+            </StatusChip>
+          )}
         </div>
         <p className="mt-2 flex items-start gap-2 text-[13px] text-ink">
           <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-harbor" />
-          {s.direction === "import" ? "Deliver to" : "Bound for"}: {s.destination}
+          {tracked ? "Namespace" : s.direction === "import" ? "Deliver to" : "Bound for"}: {s.destination}
         </p>
         <p className="mt-1 pl-6 text-[12px] text-slate">{s.consignee}</p>
         <div className="mt-3 flex items-center gap-3 border-t border-hairline pt-3">
@@ -145,7 +251,7 @@ function Journey({ s }: { s: ShipmentT }) {
           <div className="min-w-0 flex-1 text-[12.5px]">
             <p className="font-semibold text-ink">{s.sizeLabel}</p>
             <p className="truncate text-slate">
-              {s.cargo} · {vessel?.short}
+              {[s.cargo, vessel?.short].filter(Boolean).join(" · ")}
             </p>
           </div>
           {container ? (
@@ -159,9 +265,32 @@ function Journey({ s }: { s: ShipmentT }) {
   );
 }
 
+function WaitingForShipments() {
+  return (
+    <HudLayout
+      bottom={
+        <Panel className="w-full px-5 py-4" aria-label="Shipments">
+          <h1 className="text-[16px] font-bold text-ink">Shipments</h1>
+          <p className="mt-1 text-[13px] text-slate">Waiting for workloads from the data source.</p>
+        </Panel>
+      }
+    />
+  );
+}
+
+/** Where /shipments lands: the source's first shipment, or the featured simulated one. */
+export function ShipmentsIndex() {
+  const port = usePortSnapshot();
+  if (!port.shipments) return <Navigate to={`/shipments/${SIM_DEFAULT_SHIPMENT}`} replace />;
+  const first = port.shipments[0];
+  return first ? <Navigate to={`/shipments/${first.id}`} replace /> : <WaitingForShipments />;
+}
+
 export default function Shipment() {
   const { id = "" } = useParams();
-  const s = shipmentById(id);
+  const port = usePortSnapshot();
+  const status = useConnectionStatus();
+  const s = findShipment(id, port);
   const { setPageSelection, setView } = usePort();
 
   useEffect(() => {
@@ -169,6 +298,11 @@ export default function Shipment() {
     if (s) setPageSelection({ kind: "shipment", id: s.id });
   }, [s, setPageSelection, setView]);
 
-  if (!s) return <Navigate to="/shipments/SHP-20931" replace />;
-  return <HudLayout right={<GateTable />} bottom={<Journey s={s} />} sheetOrder={["bottom", "right"]} />;
+  if (!s) {
+    if (!port.shipments) return <Navigate to={`/shipments/${SIM_DEFAULT_SHIPMENT}`} replace />;
+    if (status.kind !== "live") return <WaitingForShipments />;
+    return <Navigate to="/shipments" replace />;
+  }
+  const right = port.shipments ? <ShipmentFacts s={s} /> : <GateTable />;
+  return <HudLayout right={right} bottom={<Journey s={s} port={port} />} sheetOrder={["bottom", "right"]} />;
 }

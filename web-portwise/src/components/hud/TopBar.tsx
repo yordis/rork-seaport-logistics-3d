@@ -6,20 +6,24 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { cn } from "@/lib/utils";
 import { SIM_START_SEC, fmtClock, timeControl, useClock } from "@/sim/simStore";
 import { usePort } from "@/state/PortProvider";
-import { ALERTS, BERTH_COUNT, CARRIER_NAME, PORT_NAME } from "@/data/port";
+import { BERTH_COUNT, CARRIER_NAME, PORT_NAME } from "@/data/port";
+import { usePortSnapshot } from "@/source/store";
 import { AlertRow } from "./AlertsPanel";
+import { SourceToggle } from "./SourceToggle";
 
 const TABS = [
   { to: "/", label: "Overview", icon: LayoutDashboard, end: true },
   { to: "/vessels", label: "Vessels", icon: Ship, end: false },
   { to: "/yard", label: "Yard", icon: Container, end: false },
   { to: "/shipments", label: "Shipments", icon: Package, end: false },
-  { to: "/logistics", label: "Logistics", icon: Network, end: false },
+  { to: "/logistics", label: "Logistics", icon: Network, end: false, logistics: true },
 ];
 
 function LiveClock() {
   const snap = useClock();
+  const port = usePortSnapshot();
   const time = <span className="font-mono text-ink tnum">{fmtClock(SIM_START_SEC + snap.t, true)}</span>;
+  if (port.source === "live") return null;
   if (snap.live) {
     return (
       <div className="hidden items-center gap-2 whitespace-nowrap rounded-full border border-hairline bg-paper px-3 py-1.5 text-[12.5px] font-semibold text-moss lg:flex" aria-live="off">
@@ -45,6 +49,8 @@ function LiveClock() {
 
 export function TopBar() {
   const { setSearchOpen, open } = usePort();
+  const port = usePortSnapshot();
+  const alerts = port.alerts;
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -67,8 +73,8 @@ export function TopBar() {
         <span className="hidden text-[19px] font-extrabold tracking-tight text-ink sm:inline">Portwise</span>
       </NavLink>
 
-      <nav aria-label="Main navigation" className="flex min-w-0 items-center gap-0.5 md:ml-2">
-        {TABS.map((t) => (
+      <nav aria-label="Main navigation" className="flex shrink-0 items-center gap-0.5 md:ml-2">
+        {TABS.filter((t) => !("logistics" in t) || port.logistics).map((t) => (
           <NavLink
             key={t.to}
             to={t.to}
@@ -90,7 +96,7 @@ export function TopBar() {
         type="button"
         onClick={() => setSearchOpen(true)}
         aria-label="Search vessels, containers, trucks and sites"
-        className="ml-auto grid h-10 w-10 shrink-0 place-items-center rounded-[11px] border border-hairline bg-canvas/60 text-left text-[13px] text-slate transition-colors hover:bg-sand md:ml-2 md:flex md:w-[220px] md:items-center md:gap-2.5 md:px-3 lg:w-[260px] 2xl:w-[340px]"
+        className="ml-auto grid h-10 w-10 min-w-10 place-items-center rounded-[11px] border border-hairline bg-canvas/60 text-left text-[13px] text-slate transition-colors hover:bg-sand md:ml-2 md:flex md:w-[220px] md:items-center md:gap-2.5 md:px-3 lg:w-[260px] 2xl:w-[340px]"
       >
         <Search className="h-4 w-4 shrink-0" />
         <span className="hidden truncate md:inline">Search vessels, containers, trucks, sites…</span>
@@ -116,18 +122,20 @@ export function TopBar() {
           </DropdownMenuContent>
         </DropdownMenu>
 
+        <SourceToggle />
+
         <LiveClock />
 
         <Popover>
-          <PopoverTrigger className="relative grid h-10 w-10 place-items-center rounded-full text-ink hover:bg-sand" aria-label={`Alerts (${ALERTS.length})`}>
+          <PopoverTrigger className="relative grid h-10 w-10 place-items-center rounded-full text-ink hover:bg-sand" aria-label={`Alerts (${alerts.length})`}>
             <Bell className="h-[19px] w-[19px]" />
             <span className="absolute right-2 top-2 h-2.5 w-2.5 rounded-full border-2 border-paper bg-signal" />
           </PopoverTrigger>
           <PopoverContent align="end" collisionPadding={12} className="w-[min(360px,calc(100vw-24px))] rounded-[14px] border-hairline bg-paper p-2">
             <p className="px-2 pb-1 pt-1 text-[14px] font-bold text-ink">All alerts</p>
             <ul className="scroll-thin max-h-[min(420px,60dvh)] overflow-y-auto overscroll-contain">
-              {ALERTS.map((a) => (
-                <AlertRow key={a.id} alert={a} onOpen={() => open(a.target)} />
+              {alerts.map((a) => (
+                <AlertRow key={a.id} alert={a} onOpen={() => a.target && open(a.target)} />
               ))}
             </ul>
           </PopoverContent>

@@ -62,8 +62,8 @@ export function ProgressBar({ value, tone = "signal", live, className, height = 
 export function DefRow({ label, children, mono = true }: { label: ReactNode; children: ReactNode; mono?: boolean }) {
   return (
     <div className="flex items-center justify-between gap-4 border-b border-hairline/70 py-2 text-[13px] last:border-b-0">
-      <dt className="text-slate">{label}</dt>
-      <dd className={cn("text-right font-semibold text-ink", mono && "font-mono tnum text-[12.5px]")}>{children}</dd>
+      <dt className="shrink-0 text-slate">{label}</dt>
+      <dd className={cn("min-w-0 text-right font-semibold text-ink", mono && "font-mono tnum text-[12.5px]")}>{children}</dd>
     </div>
   );
 }

@@ -11,6 +11,13 @@ export default defineConfig(({ mode }) => ({
     hmr: {
       overlay: false,
     },
+    proxy: {
+      "/k8s": {
+        target: process.env.K8S_PROXY_URL ?? "http://127.0.0.1:8001",
+        changeOrigin: true,
+        rewrite: (p) => p.replace(/^\/k8s/, ""),
+      },
+    },
   },
   plugins: [react()],
   resolve: {

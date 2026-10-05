@@ -3,8 +3,9 @@ import { Boxes, Container as ContainerIcon, Package, Ship, Truck } from "lucide-
 import { FACILITIES } from "@/data/facilities";
 import { FacilityIcon } from "./FacilityIcon";
 import { CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
-import { QUAY_CRANES, TRUCKS, VESSELS, YARD_BLOCKS } from "@/data/port";
-import { CONTAINERS, FEATURED_SHIPMENT_IDS, shipmentById } from "@/data/containers";
+import { TRUCKS } from "@/data/port";
+import { FEATURED_SHIPMENT_IDS, shipmentById } from "@/data/containers";
+import { findShipment, usePortSnapshot } from "@/source/store";
 import type { Selection } from "@/data/types";
 import { usePort } from "@/state/PortProvider";
 import { CraneGlyph } from "./primitives";
@@ -15,23 +16,32 @@ export function SearchDialog() {
   const { searchOpen, setSearchOpen, open } = usePort();
   const [q, setQ] = useState<string>("");
   const nq = norm(q);
+  const port = usePortSnapshot();
 
   const results = useMemo(() => {
     const has = (s: string) => nq.length === 0 || norm(s).includes(nq);
-    const containers = nq.length >= 2 ? CONTAINERS.filter((c) => norm(c.id).includes(nq) || norm(c.position).includes(nq)).slice(0, 8) : CONTAINERS.filter((c) => c.shipmentId === "SHP-20931");
-    const shipmentIds = new Set<string>(FEATURED_SHIPMENT_IDS.filter((id) => has(id)));
-    const m = /(\d{5})/.exec(q);
-    if (m && shipmentById(`SHP-${m[1]}`)) shipmentIds.add(`SHP-${m[1]}`);
+    const containers =
+      nq.length >= 2
+        ? port.containers.filter((c) => norm(c.id).includes(nq) || norm(c.code).includes(nq) || norm(c.position).includes(nq)).slice(0, 8)
+        : port.containers.filter((c) => c.shipmentId === "SHP-20931");
+    const shipmentIds = new Set<string>();
+    if (port.shipments) {
+      port.shipments.filter((s) => has(s.id) || has(s.label ?? "") || has(s.destination)).slice(0, 8).forEach((s) => shipmentIds.add(s.id));
+    } else {
+      FEATURED_SHIPMENT_IDS.filter((id) => has(id)).forEach((id) => shipmentIds.add(id));
+      const m = /(\d{5})/.exec(q);
+      if (m && shipmentById(`SHP-${m[1]}`)) shipmentIds.add(`SHP-${m[1]}`);
+    }
     return {
-      vessels: VESSELS.filter((v) => has(v.name) || has(v.imo) || has(v.line)),
-      cranes: QUAY_CRANES.filter((c) => has(c.id)),
+      vessels: port.vessels.filter((v) => has(v.name) || has(v.imo) || has(v.line)),
+      cranes: port.cranes.filter((c) => has(c.id)),
       trucks: TRUCKS.filter((t) => has(t.plate) || has(t.carrier)),
-      blocks: YARD_BLOCKS.filter((b) => has(`block ${b.id}`) || has(b.id)),
-      facilities: nq.length >= 2 ? FACILITIES.filter((f) => has(f.name) || has(f.short) || has(f.operator) || has(f.group)) : [],
+      blocks: port.blocks.filter((b) => has(`block ${b.id}`) || has(b.id) || (!!b.meta && has(b.meta.headline))),
+      facilities: nq.length >= 2 && port.logistics ? FACILITIES.filter((f) => has(f.name) || has(f.short) || has(f.operator) || has(f.group)) : [],
       containers,
       shipments: Array.from(shipmentIds),
     };
-  }, [nq, q]);
+  }, [nq, q, port]);
 
   const go = (sel: Selection) => {
     setSearchOpen(false);
@@ -50,7 +60,7 @@ export function SearchDialog() {
               <CommandItem key={v.id} value={`vessel-${v.id}`} onSelect={() => go({ kind: "vessel", id: v.id })}>
                 <Ship className="mr-2 h-4 w-4 text-slate" />
                 <span className="font-semibold">{v.name}</span>
-                <span className="ml-auto text-xs text-slate">Berth {v.berth} · ETA {v.eta}</span>
+                <span className="ml-auto text-xs text-slate">{v.meta ? `${v.berth ? `Berth ${v.berth}` : "Anchorage"} · ${v.meta.headline}` : `Berth ${v.berth} · ETA ${v.eta}`}</span>
               </CommandItem>
             ))}
           </CommandGroup>
@@ -80,11 +90,11 @@ export function SearchDialog() {
         {results.shipments.length ? (
           <CommandGroup heading="Shipments">
             {results.shipments.map((id) => {
-              const s = shipmentById(id);
+              const s = findShipment(id, port);
               return (
                 <CommandItem key={id} value={`shipment-${id}`} onSelect={() => go({ kind: "shipment", id })}>
                   <Package className="mr-2 h-4 w-4 text-slate" />
-                  <span className="font-mono font-semibold">#{id}</span>
+                  <span className="truncate font-mono font-semibold">{s?.label ?? `#${id}`}</span>
                   <span className="ml-auto truncate text-xs text-slate">{s?.destination}</span>
                 </CommandItem>
               );
@@ -118,7 +128,7 @@ export function SearchDialog() {
             {results.blocks.map((b) => (
               <CommandItem key={b.id} value={`block-${b.id}`} onSelect={() => go({ kind: "block", id: b.id })}>
                 <Boxes className="mr-2 h-4 w-4 text-slate" />
-                <span className="font-semibold">Block {b.id}</span>
+                <span className="font-semibold">Block {b.id}{b.meta ? ` · ${b.meta.headline}` : ""}</span>
                 <span className="ml-auto font-mono text-xs text-slate">{Math.round(b.fill * 100)}%</span>
               </CommandItem>
             ))}

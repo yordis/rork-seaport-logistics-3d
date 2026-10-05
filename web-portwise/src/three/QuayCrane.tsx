@@ -3,8 +3,9 @@ import * as THREE from "three";
 import { useFrame } from "@react-three/fiber";
 import type { QuayCrane as QuayCraneT } from "@/data/types";
 import { COLORS, CONTAINER_COLORS, CRANE_LANE_Z, LAND_RAIL_Z, SEA_RAIL_Z, SHIP_Z, WATER_Y } from "@/data/layout";
-import { VESSELS } from "@/data/port";
-import { CRANE_CYCLE, CRANE_DROP_AT, craneOffset, craneStatusAt, sceneRegistry, sim, simT, useSimTick } from "@/sim/simStore";
+import { CRANE_CYCLE, CRANE_DROP_AT, craneOffset, sceneRegistry, simT, useSimTick } from "@/sim/simStore";
+import { craneStatus, isCraneActive } from "@/source/cranes";
+import { findVessel } from "@/source/store";
 import { Beam, Part, Selectable, mat, unitBox } from "./parts";
 import { Chip3D } from "./Chip3D";
 import { DECK_Y } from "./Vessel";
@@ -25,12 +26,13 @@ function CraneLabel({ crane }: { crane: QuayCraneT }) {
   const { selection, view, open } = usePort();
   const selected = selection?.kind === "crane" && selection.id === crane.id;
   const servingSelectedVessel = selection?.kind === "vessel" && selection.id === crane.vesselId;
-  const st = craneStatusAt(crane, simT());
-  const active = sim.craneActive[crane.id];
+  const st = craneStatus(crane, simT());
+  const active = isCraneActive(crane, simT());
   const paused = st.state === "paused";
-  const show = selected || servingSelectedVessel || (view === "overview" && (paused || crane.id === "STS-03"));
+  const show = selected || servingSelectedVessel || (view === "overview" && (paused || crane.id === "STS-03" || (!!crane.activity && active)));
   if (!show) return null;
-  const text = active ? `${crane.id} · ${crane.movesPerHour || 28} moves/h` : `${crane.id} · ${st.reason ?? "Idle"}`;
+  const working = crane.activity ? `${crane.activity.moves} scheduled` : `${crane.movesPerHour || 28} moves/h`;
+  const text = active ? `${crane.id} · ${working}` : `${crane.id} · ${st.reason ?? "Idle"}`;
   return (
     <Chip3D position={[0, 27.5, 15]} tone={paused ? "brick" : active ? "signal" : "amber"} pulse={paused} active={selected} onClick={() => open({ kind: "crane", id: crane.id })}>
       <span className="font-mono">{text}</span>
@@ -51,7 +53,7 @@ export function QuayCrane({ crane, index }: { crane: QuayCraneT; index: number }
   const forestays = useRef<THREE.Group>(null);
   const lastCycle = useRef<number>(-1);
   const boomAngle = useRef<number>(crane.mode === "paused" || crane.mode === "idle" ? -1.32 : 0);
-  const vessel = VESSELS.find((v) => v.id === crane.vesselId);
+  const vessel = findVessel(crane.vesselId);
   const loading = vessel?.status === "loading";
   const offset = craneOffset(index);
   const shipZBase = SHIP_Z;
@@ -67,7 +69,7 @@ export function QuayCrane({ crane, index }: { crane: QuayCraneT; index: number }
 
   useFrame(({ clock }) => {
     const now = simT();
-    const st = craneStatusAt(crane, now);
+    const st = craneStatus(crane, now);
     const active = st.state === "active";
     boomAngle.current = -1.32 * st.boom;
     if (outreach.current) outreach.current.rotation.x = boomAngle.current;

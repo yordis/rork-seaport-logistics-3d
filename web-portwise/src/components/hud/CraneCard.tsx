@@ -1,17 +1,21 @@
 import { Link } from "react-router-dom";
 import { Wind, X } from "lucide-react";
-import { craneById, vesselById } from "@/data/port";
-import { craneStatusAt, sim, simT, useSimTick } from "@/sim/simStore";
+import type { QuayCrane, Vessel } from "@/data/types";
+import { sim, simT, useSimTick } from "@/sim/simStore";
+import { craneMoves, craneStatus } from "@/source/cranes";
+import { findCrane, findVessel, usePortSnapshot } from "@/source/store";
+import { MetaRows } from "./MetaRows";
 import { usePort } from "@/state/PortProvider";
 import { CraneGlyph, DefRow, IconButton, Panel, PanelHeader, ProgressBar, StatusChip } from "./primitives";
 
 export function CraneCard({ id }: { id: string }) {
   useSimTick();
   const { closeOverride } = usePort();
-  const crane = craneById(id);
+  const port = usePortSnapshot();
+  const crane = findCrane(id, port);
   if (!crane) return null;
-  const vessel = crane.vesselId ? vesselById(crane.vesselId) : undefined;
-  const st = craneStatusAt(crane, simT());
+  const vessel = findVessel(crane.vesselId, port);
+  const st = craneStatus(crane, simT());
   const active = st.state === "active";
   const loading = vessel?.status === "loading";
   const live = vessel ? sim.vessels[vessel.id] : undefined;
@@ -34,7 +38,11 @@ export function CraneCard({ id }: { id: string }) {
         {crane.model} · {crane.operator}
       </p>
       <div className="mt-3 pl-[52px]">
-        {st.state === "paused" ? (
+        {crane.meta ? (
+          <StatusChip tone={active ? "moss" : "amber"} pulse={active}>
+            {active ? "Scheduling pods" : st.reason ?? "Idle"}
+          </StatusChip>
+        ) : st.state === "paused" ? (
           <StatusChip tone="brick" pulse>
             {st.reason}
           </StatusChip>
@@ -45,6 +53,24 @@ export function CraneCard({ id }: { id: string }) {
         )}
       </div>
 
+      {crane.meta ? (
+        <>
+          <div className="mt-4 rounded-[10px] bg-sand/70 p-3">
+            <p className="eyebrow">Pods scheduled since connect</p>
+            <p className="mt-1 font-mono text-[22px] font-bold text-ink tnum">{craneMoves(crane)}</p>
+          </div>
+          <MetaRows meta={crane.meta} className="mt-3" />
+        </>
+      ) : (
+        <CraneSimDetails crane={crane} vessel={vessel} active={active} loading={loading} progress={progress} rate={rate} paused={st.state === "paused"} />
+      )}
+    </Panel>
+  );
+}
+
+function CraneSimDetails({ crane, vessel, active, loading, progress, rate, paused }: { crane: QuayCrane; vessel?: Vessel; active: boolean; loading: boolean; progress: number; rate: number; paused: boolean }) {
+  return (
+    <>
       <div className="mt-4 grid grid-cols-2 gap-2">
         <div className="rounded-[10px] bg-sand/70 p-3">
           <p className="eyebrow">Productivity</p>
@@ -55,7 +81,7 @@ export function CraneCard({ id }: { id: string }) {
         </div>
         <div className="rounded-[10px] bg-sand/70 p-3">
           <p className="eyebrow">Moves today</p>
-          <p className="mt-1 font-mono text-[22px] font-bold text-ink tnum">{sim.craneMoves[crane.id]}</p>
+          <p className="mt-1 font-mono text-[22px] font-bold text-ink tnum">{craneMoves(crane)}</p>
         </div>
       </div>
 
@@ -88,9 +114,9 @@ export function CraneCard({ id }: { id: string }) {
             </span>
           }
         >
-          <span className={st.state === "paused" ? "text-brick" : ""}>{st.state === "paused" ? "14 m/s" : "11 m/s"}</span>
+          <span className={paused ? "text-brick" : ""}>{paused ? "14 m/s" : "11 m/s"}</span>
         </DefRow>
       </dl>
-    </Panel>
+    </>
   );
 }

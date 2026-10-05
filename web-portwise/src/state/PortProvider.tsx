@@ -2,7 +2,7 @@ import createContextHook from "@nkzw/create-context-hook";
 import { useCallback, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { BlockCategory, Selection } from "@/data/types";
-import { containerById } from "@/data/containers";
+import { currentPort, findContainer } from "@/source/store";
 
 export type CameraView = "overview" | "vessels" | "yard" | "gate" | "logistics";
 export type YardFilter = "all" | BlockCategory;
@@ -39,7 +39,7 @@ export const [PortProvider, usePort] = createContextHook(() => {
           navigate(`/yard/${sel.id}`);
           break;
         case "container": {
-          const c = containerById(sel.id);
+          const c = findContainer(sel.id);
           setOverrideSelection(null);
           if (c) navigate(`/yard/${c.blockId}?c=${c.id}`);
           break;
@@ -49,6 +49,7 @@ export const [PortProvider, usePort] = createContextHook(() => {
           navigate(`/shipments/${sel.id}`);
           break;
         case "facility":
+          if (!currentPort().logistics) break;
           setOverrideSelection(null);
           navigate(`/logistics/${sel.id}`);
           break;
