@@ -11,6 +11,7 @@ import { CraneCard } from "./CraneCard";
 import { TruckCard } from "./TruckCard";
 import { PanelSheet } from "./BottomSheet";
 import { TimeControls } from "./TimeBar";
+import { useDataSource } from "@/source/store";
 
 type Slot = "left" | "right" | "bottom" | "bottomLeft";
 
@@ -67,6 +68,7 @@ export function HudLayout({ left, right, bottom, bottomLeft, wideLeft, sheetOrde
   const isCompact = useIsCompact();
   const isPhone = useIsPhone();
   const isLandscapeShort = useMediaQuery(LANDSCAPE_SHORT);
+  const hasTimeline = useDataSource() !== "live";
   const { pathname, search } = useLocation();
   const inspector =
     overrideSelection?.kind === "crane" ? (
@@ -98,8 +100,8 @@ export function HudLayout({ left, right, bottom, bottomLeft, wideLeft, sheetOrde
         <PanelSheet
           mode={isLandscapeShort ? "dock" : "sheet"}
           hidden={hidden}
-          headerHeight={isLandscapeShort || isPhone ? STACKED_H : 60}
-          header={<TimeControls stacked={isLandscapeShort || isPhone} />}
+          headerHeight={!hasTimeline ? 0 : isLandscapeShort || isPhone ? STACKED_H : 60}
+          header={hasTimeline ? <TimeControls stacked={isLandscapeShort || isPhone} /> : null}
         >
           {content}
         </PanelSheet>
@@ -109,7 +111,7 @@ export function HudLayout({ left, right, bottom, bottomLeft, wideLeft, sheetOrde
 
   const fade = cn("transition-[opacity,transform,visibility] duration-300", hidden && "invisible opacity-0");
   return (
-    <div className={cn("pointer-events-none absolute inset-x-0 top-[var(--hud-top)] z-20 flex flex-col gap-3 p-4", hidden ? "bottom-0" : "bottom-[calc(76px+var(--sab))]")}>
+    <div className={cn("pointer-events-none absolute inset-x-0 top-[var(--hud-top)] z-20 flex flex-col gap-3 p-4", hidden ? "bottom-0" : hasTimeline ? "bottom-[calc(76px+var(--sab))]" : "bottom-[var(--sab)]")}>
       <div className="flex min-h-0 flex-1 flex-row gap-3">
         <div className={cn("flex min-h-0 shrink-0 flex-col justify-between gap-3", wideLeft ? "w-[320px]" : "w-[248px]", fade, hidden && "-translate-x-6")}>
           <div className="scroll-thin flex min-h-0 flex-col gap-3 overflow-y-auto">{left}</div>

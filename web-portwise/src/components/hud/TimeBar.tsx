@@ -7,7 +7,7 @@ import { MIN_T, SIM_START_SEC, TIMELINE_EVENTS, clockSnapshot, fmtClock, fmtDura
 import type { ClockSnapshot } from "@/sim/simStore";
 import { usePort } from "@/state/PortProvider";
 import { useHudHidden } from "@/state/hudVisibility";
-import { isLive, useDataSource } from "@/source/store";
+import { isLive } from "@/source/store";
 
 const REWIND_RATES = [-2, -8, -32];
 const FORWARD_RATES = [2, 8, 32];
@@ -272,33 +272,22 @@ function LiveState({ snap, short }: { snap: ClockSnapshot; short?: boolean }) {
   );
 }
 
-/** Stands in for the scrubber while a live source drives the port: there is no history to replay. */
-function LiveSourceNotice({ compact = false }: { compact?: boolean }) {
-  return (
-    <div className={cn("flex min-w-0 flex-1 items-center gap-2 rounded-md bg-sand/70 px-3 text-[12px] font-semibold text-slate", compact ? "h-9" : "h-8")} role="note">
-      <Radio className="h-3.5 w-3.5 shrink-0 text-moss" />
-      <span className="truncate">Live cluster · rewind and scrub are not available</span>
-    </div>
-  );
-}
-
 /**
  * Playback controls used inside the phone/tablet bottom sheet header.
  * `stacked` (phones, landscape dock): scrubber on top, transport row below, like a media player.
  */
 export function TimeControls({ stacked }: { stacked: boolean }) {
   const snap = useClock();
-  const live = useDataSource() === "live";
   const playing = snap.live || snap.rate !== 0;
   const transport = (
     <div className="flex shrink-0 items-center" role="toolbar" aria-label="Playback">
-      <TBtn label="Back 30 seconds" disabled={live} onClick={() => timeControl.step(-30)} className={stacked ? "max-[399px]:hidden" : ""}>
+      <TBtn label="Back 30 seconds" onClick={() => timeControl.step(-30)} className={stacked ? "max-[399px]:hidden" : ""}>
         <StepBack className="h-[17px] w-[17px]" />
       </TBtn>
-      <TBtn label={snap.rate < 0 ? `Rewind faster (×${-nextRate(REWIND_RATES, snap.rate)})` : "Rewind"} disabled={live} active={snap.rate < 0} onClick={() => timeControl.setRate(nextRate(REWIND_RATES, snap.rate))}>
+      <TBtn label={snap.rate < 0 ? `Rewind faster (×${-nextRate(REWIND_RATES, snap.rate)})` : "Rewind"} active={snap.rate < 0} onClick={() => timeControl.setRate(nextRate(REWIND_RATES, snap.rate))}>
         <Rewind className="h-[17px] w-[17px]" />
       </TBtn>
-      <PlayButton playing={playing} disabled={live} />
+      <PlayButton playing={playing} />
       <TBtn label={snap.live ? "Already live" : `Fast-forward (×${nextRate(FORWARD_RATES, snap.rate)})`} disabled={snap.live} active={snap.rate > 1} onClick={() => timeControl.setRate(nextRate(FORWARD_RATES, snap.rate))}>
         <FastForward className="h-[17px] w-[17px]" />
       </TBtn>
@@ -311,7 +300,7 @@ export function TimeControls({ stacked }: { stacked: boolean }) {
   if (stacked) {
     return (
       <div role="region" aria-label="Time controls" className="flex flex-col px-3 pb-1.5">
-        {live ? <LiveSourceNotice compact /> : <Scrubber compact />}
+        <Scrubber compact />
         <div className="flex items-center gap-2">
           {transport}
           <ClockReadout snap={snap} className="ml-1 min-w-0" />
@@ -326,7 +315,7 @@ export function TimeControls({ stacked }: { stacked: boolean }) {
     <div role="region" aria-label="Time controls" className="flex h-[60px] items-center gap-3 px-3">
       {transport}
       <ClockReadout snap={snap} className="w-[84px]" />
-      {live ? <LiveSourceNotice compact /> : <Scrubber compact />}
+      <Scrubber compact />
       <LiveState snap={snap} />
     </div>
   );
@@ -335,7 +324,6 @@ export function TimeControls({ stacked }: { stacked: boolean }) {
 /** Desktop bottom playback bar: pause, rewind, fast-forward and scrub the whole 3D port through the last hour. */
 export function TimeBar() {
   const snap = useClock();
-  const live = useDataSource() === "live";
   const playing = snap.live || snap.rate !== 0;
   const hudHidden = useHudHidden();
 
@@ -348,13 +336,13 @@ export function TimeBar() {
     >
       <div role="region" aria-label="Time controls" className="panel pw-rise pointer-events-auto flex h-[60px] items-center gap-4 px-3.5">
         <div className="flex shrink-0 items-center gap-0.5" role="toolbar" aria-label="Playback">
-          <TBtn label="Back 30 seconds" disabled={live} onClick={() => timeControl.step(-30)} className="hidden sm:grid">
+          <TBtn label="Back 30 seconds" onClick={() => timeControl.step(-30)} className="hidden sm:grid">
             <StepBack className="h-[17px] w-[17px]" />
           </TBtn>
-          <TBtn label={snap.rate < 0 ? `Rewind faster (×${-nextRate(REWIND_RATES, snap.rate)})` : "Rewind"} disabled={live} active={snap.rate < 0} onClick={() => timeControl.setRate(nextRate(REWIND_RATES, snap.rate))}>
+          <TBtn label={snap.rate < 0 ? `Rewind faster (×${-nextRate(REWIND_RATES, snap.rate)})` : "Rewind"} active={snap.rate < 0} onClick={() => timeControl.setRate(nextRate(REWIND_RATES, snap.rate))}>
             <Rewind className="h-[17px] w-[17px]" />
           </TBtn>
-          <PlayButton playing={playing} disabled={live} />
+          <PlayButton playing={playing} />
           <TBtn label={snap.live ? "Already live" : `Fast-forward (×${nextRate(FORWARD_RATES, snap.rate)})`} disabled={snap.live} active={snap.rate > 1} onClick={() => timeControl.setRate(nextRate(FORWARD_RATES, snap.rate))}>
             <FastForward className="h-[17px] w-[17px]" />
           </TBtn>
@@ -365,7 +353,7 @@ export function TimeBar() {
 
         <ClockReadout snap={snap} className="w-[92px]" />
 
-        {live ? <LiveSourceNotice /> : <Scrubber />}
+        <Scrubber />
 
         <LiveState snap={snap} />
       </div>
