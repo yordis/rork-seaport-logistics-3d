@@ -15,4 +15,12 @@ export const SIM_SNAPSHOT: PortSnapshot = {
   kpis: null,
   shipments: null,
   logistics: true,
+  vocabulary: {
+    vessel: "Vessel",
+    container: "Container",
+    shipment: "Shipment",
+    shipments: "Shipments",
+    journey: "Shipment journey",
+    search: "Search vessels, containers, trucks, shipments…",
+  },
 };

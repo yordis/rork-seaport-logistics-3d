@@ -51,11 +51,11 @@ export function SearchDialog() {
 
   return (
     <CommandDialog open={searchOpen} onOpenChange={setSearchOpen} shouldFilter={false}>
-      <CommandInput placeholder="Search vessels, containers, trucks, shipments…" value={q} onValueChange={setQ} />
+      <CommandInput placeholder={port.vocabulary.search} value={q} onValueChange={setQ} />
       <CommandList className="max-h-[min(420px,calc(100dvh-140px))] overscroll-contain">
         <CommandEmpty>No results for “{q}”.</CommandEmpty>
         {results.vessels.length ? (
-          <CommandGroup heading="Vessels">
+          <CommandGroup heading={`${port.vocabulary.vessel}s`}>
             {results.vessels.map((v) => (
               <CommandItem key={v.id} value={`vessel-${v.id}`} onSelect={() => go({ kind: "vessel", id: v.id })}>
                 <Ship className="mr-2 h-4 w-4 text-slate" />
@@ -77,7 +77,7 @@ export function SearchDialog() {
           </CommandGroup>
         ) : null}
         {results.containers.length ? (
-          <CommandGroup heading="Containers">
+          <CommandGroup heading={`${port.vocabulary.container}s`}>
             {results.containers.map((c) => (
               <CommandItem key={c.id} value={`container-${c.id}`} onSelect={() => go({ kind: "container", id: c.id })}>
                 <ContainerIcon className="mr-2 h-4 w-4 text-slate" />
@@ -88,7 +88,7 @@ export function SearchDialog() {
           </CommandGroup>
         ) : null}
         {results.shipments.length ? (
-          <CommandGroup heading="Shipments">
+          <CommandGroup heading={port.vocabulary.shipments}>
             {results.shipments.map((id) => {
               const s = findShipment(id, port);
               return (

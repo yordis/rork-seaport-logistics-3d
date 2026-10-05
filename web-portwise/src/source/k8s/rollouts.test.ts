@@ -116,6 +116,8 @@ describe("shipments", () => {
     expect(byLabel.get("job/bad")?.hold?.reason).toBe("BackoffLimitExceeded");
     expect(byLabel.get("job/good")?.current).toBe(STEPS);
     expect(byLabel.get("job/good")?.steps[STEPS - 1].time).not.toBe("");
+    expect(byLabel.get("job/good")?.steps[STEPS - 1].label).toBe("Completed");
+    expect(byLabel.get("job/good")?.meta?.headline).toBe("Completed");
   });
 
   it("orders active and held shipments first, then by namespace and name", () => {

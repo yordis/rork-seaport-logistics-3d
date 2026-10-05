@@ -26,6 +26,16 @@ export interface YardOverflow {
   items: number;
 }
 
+/** Words the UI uses for the entities a source provides. */
+export interface PortVocabulary {
+  vessel: string;
+  container: string;
+  shipment: string;
+  shipments: string;
+  journey: string;
+  search: string;
+}
+
 /** Everything the port UI renders, independent of where the data came from. */
 export interface PortSnapshot {
   source: SourceKind;
@@ -43,6 +53,7 @@ export interface PortSnapshot {
   shipments: Shipment[] | null;
   /** Whether the logistics district (facilities, drayage) is backed by this source. */
   logistics: boolean;
+  vocabulary: PortVocabulary;
 }
 
 export type ConnectionStatus =

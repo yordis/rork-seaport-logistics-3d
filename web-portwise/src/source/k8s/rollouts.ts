@@ -184,16 +184,16 @@ export function projectShipments(
     const settled = isSettled(w, m);
     const hold = holdOf(w, pods, m);
     const times = signalTimes(w, pods, latestRolloutAt, settled, m);
-    const steps: ShipmentStep[] = sh.steps.map((r) => ({ label: r.label, time: stamp(times[r.signal]) }));
+    const kind = sh.kinds[w.resource];
+    const steps: ShipmentStep[] = sh.steps.map((r) => ({ label: r.signal === "settled" ? kind.settledStep : r.label, time: stamp(times[r.signal]) }));
     const reached = sh.steps.map((r, i) => (times[r.signal] !== null ? i : -1));
     const furthest = Math.max(...reached);
     const current = settled && !hold ? sh.steps.length : Math.min(furthest + 1, sh.steps.length - 1);
-    const kind = sh.kinds[w.resource];
     const namespace = w.meta.namespace ?? "";
     const nodes = all.map((p) => p.spec?.nodeName ?? "").filter(Boolean);
     const image = w.images[0] ?? "";
     const sizeLabel = w.resource === "jobs" ? `${w.ready}/${w.desired} completed` : `${w.ready}/${w.desired} ready`;
-    const look = hold ? { headline: hold.reason, tone: sh.states.held.tone } : settled ? sh.states.settled : sh.states.inProgress;
+    const look = hold ? { headline: hold.reason, tone: sh.states.held.tone } : settled ? { headline: kind.settledStep, tone: sh.states.settled.tone } : { headline: kind.activeHeadline, tone: sh.states.inProgress.tone };
     const details: DetailRow[] = [
       { label: "Desired", value: String(w.desired) },
       { label: "Ready", value: String(w.ready) },

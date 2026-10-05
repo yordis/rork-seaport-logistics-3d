@@ -337,5 +337,6 @@ export function projectPort(state: ClusterState, activity: BerthActivity = {}, m
     kpis,
     shipments: projectShipments(state, ownership, workloads, (uid) => containerOfPod.get(uid), vesselIdOf, m),
     logistics: false,
+    vocabulary: m.vocabulary,
   };
 }

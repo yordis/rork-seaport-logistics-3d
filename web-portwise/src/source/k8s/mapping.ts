@@ -1,5 +1,6 @@
 import type { BlockCategory, Severity, StatusTone, VesselStatus } from "@/data/types";
 import { CONTAINER_COLORS } from "@/data/layout";
+import type { PortVocabulary } from "../model";
 import type { PodPhase } from "./types";
 
 export interface PhaseStyle {
@@ -84,19 +85,19 @@ export const K8S_PORT_MAPPING = {
   shipments: {
     /** Workload kinds that become shipments, with the label prefix and consignee each one reads as. */
     kinds: {
-      deployments: { label: "deployment", consignee: "Deployment" },
-      statefulsets: { label: "statefulset", consignee: "StatefulSet" },
-      daemonsets: { label: "daemonset", consignee: "DaemonSet" },
-      replicasets: { label: "replicaset", consignee: "ReplicaSet" },
-      jobs: { label: "job", consignee: "Job" },
-    } satisfies Record<WorkloadResource, { label: string; consignee: string }>,
+      deployments: { label: "deployment", consignee: "Deployment", settledStep: "Rolled out", activeHeadline: "Rolling out" },
+      statefulsets: { label: "statefulset", consignee: "StatefulSet", settledStep: "Rolled out", activeHeadline: "Rolling out" },
+      daemonsets: { label: "daemonset", consignee: "DaemonSet", settledStep: "Rolled out", activeHeadline: "Rolling out" },
+      replicasets: { label: "replicaset", consignee: "ReplicaSet", settledStep: "Rolled out", activeHeadline: "Rolling out" },
+      jobs: { label: "job", consignee: "Job", settledStep: "Completed", activeHeadline: "Running" },
+    } satisfies Record<WorkloadResource, { label: string; consignee: string; settledStep: string; activeHeadline: string }>,
     /** Steps in order; a step is reached once its signal has been observed. */
     steps: [
-      { label: "Booked", signal: "rolloutStarted" },
-      { label: "Berthed", signal: "podScheduled" },
-      { label: "In yard", signal: "podInitialized" },
-      { label: "Customs", signal: "containersReady" },
-      { label: "Delivered", signal: "settled" },
+      { label: "Created", signal: "rolloutStarted" },
+      { label: "Scheduled", signal: "podScheduled" },
+      { label: "Initialized", signal: "podInitialized" },
+      { label: "Containers ready", signal: "containersReady" },
+      { label: "Rolled out", signal: "settled" },
     ] satisfies ShipmentStepRule[],
     /** Pod conditions whose earliest True transition marks each pod-level signal. */
     podConditions: { podScheduled: "PodScheduled", podInitialized: "Initialized", containersReady: "ContainersReady" } as Record<Exclude<RolloutSignal, "rolloutStarted" | "settled">, string>,
@@ -108,11 +109,19 @@ export const K8S_PORT_MAPPING = {
     holdSeverity: "danger" as Severity,
     direction: { inProgress: "export", settled: "import" } as const,
     states: {
-      inProgress: { headline: "Rolling out", tone: "signal" as StatusTone },
-      settled: { headline: "Rolled out", tone: "moss" as StatusTone },
+      inProgress: { tone: "signal" as StatusTone },
+      settled: { tone: "moss" as StatusTone },
       held: { tone: "brick" as StatusTone },
     },
   },
+  vocabulary: {
+    vessel: "Node",
+    container: "Pod",
+    shipment: "Workload",
+    shipments: "Rollouts",
+    journey: "Rollout progress",
+    search: "Search nodes, pods, workloads…",
+  } satisfies PortVocabulary,
   alerts: {
     max: 25,
     defaultSeverity: "warning" as Severity,

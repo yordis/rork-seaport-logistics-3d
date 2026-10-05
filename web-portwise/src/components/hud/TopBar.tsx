@@ -15,7 +15,7 @@ const TABS = [
   { to: "/", label: "Overview", icon: LayoutDashboard, end: true },
   { to: "/vessels", label: "Vessels", icon: Ship, end: false },
   { to: "/yard", label: "Yard", icon: Container, end: false },
-  { to: "/shipments", label: "Shipments", icon: Package, end: false },
+  { to: "/shipments", label: "Shipments", icon: Package, end: false, noun: "shipments" },
   { to: "/logistics", label: "Logistics", icon: Network, end: false, logistics: true },
 ];
 
@@ -87,7 +87,7 @@ export function TopBar() {
             }
           >
             <t.icon className="h-[18px] w-[18px] shrink-0 xl:h-[17px] xl:w-[17px]" aria-hidden="true" />
-            <span className="sr-only xl:not-sr-only">{t.label}</span>
+            <span className="sr-only xl:not-sr-only">{"noun" in t ? port.vocabulary[t.noun] : t.label}</span>
           </NavLink>
         ))}
       </nav>
@@ -95,11 +95,11 @@ export function TopBar() {
       <button
         type="button"
         onClick={() => setSearchOpen(true)}
-        aria-label="Search vessels, containers, trucks and sites"
+        aria-label={port.vocabulary.search.replace("…", "")}
         className="ml-auto grid h-10 w-10 min-w-10 place-items-center rounded-[11px] border border-hairline bg-canvas/60 text-left text-[13px] text-slate transition-colors hover:bg-sand md:ml-2 md:flex md:w-[220px] md:items-center md:gap-2.5 md:px-3 lg:w-[260px] 2xl:w-[340px]"
       >
         <Search className="h-4 w-4 shrink-0" />
-        <span className="hidden truncate md:inline">Search vessels, containers, trucks, sites…</span>
+        <span className="hidden truncate md:inline">{port.vocabulary.search}</span>
         <kbd className="ml-auto hidden rounded-md border border-hairline bg-paper px-1.5 py-0.5 font-mono text-[10.5px] text-slate md:inline">⌘K</kbd>
       </button>
 

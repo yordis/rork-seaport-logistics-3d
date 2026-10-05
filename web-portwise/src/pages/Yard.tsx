@@ -120,7 +120,7 @@ function BlockList({ activeId }: { activeId?: string }) {
 }
 
 function ContainerCard({ c }: { c: Container }) {
-  const navigate = useNavigate();
+  const { vocabulary } = usePortSnapshot();
   const [copied, setCopied] = useState<boolean>(false);
   const vessel = findVessel(c.vesselId);
   const shipment = c.meta ? findShipment(c.shipmentId) : undefined;
@@ -130,16 +130,16 @@ function ContainerCard({ c }: { c: Container }) {
     window.setTimeout(() => setCopied(false), 1400);
   };
   return (
-    <Panel className="w-full p-4" aria-label={`Container ${c.code}`}>
+    <Panel className="w-full p-4" aria-label={`${vocabulary.container} ${c.code}`}>
       <div className="flex items-center justify-between">
-        <h2 className="text-[16px] font-bold text-ink">Container details</h2>
+        <h2 className="text-[16px] font-bold text-ink">{vocabulary.container} details</h2>
         <Link to={`/yard/${c.blockId}`} aria-label="Close" className="grid h-10 w-10 place-items-center rounded-[10px] text-ink hover:bg-sand">
           <X className="h-4 w-4" />
         </Link>
       </div>
       <div className="mt-2 flex items-center gap-2">
         <p className="font-mono text-[25px] font-bold tracking-wide text-ink">{c.code}</p>
-        <IconButton label={copied ? "Copied" : "Copy container number"} onClick={copy} className="ml-auto h-8 w-8">
+        <IconButton label={copied ? "Copied" : c.meta ? `Copy ${vocabulary.container.toLowerCase()} name` : "Copy container number"} onClick={copy} className="ml-auto h-8 w-8">
           {copied ? <Check className="h-3.5 w-3.5 text-moss" /> : <Copy className="h-3.5 w-3.5" />}
         </IconButton>
       </div>
@@ -157,14 +157,14 @@ function ContainerCard({ c }: { c: Container }) {
           <dl>
             <DefRow label={<span className="inline-flex items-center gap-2"><MapPin className="h-3.5 w-3.5" />Position</span>}>{c.position}</DefRow>
             {vessel ? (
-              <DefRow label={<span className="inline-flex items-center gap-2"><Ship className="h-3.5 w-3.5" />Vessel</span>} mono={false}>
+              <DefRow label={<span className="inline-flex items-center gap-2"><Ship className="h-3.5 w-3.5" />{vocabulary.vessel}</span>} mono={false}>
                 <Link to={`/vessels/${vessel.id}`} className="text-harbor hover:underline">
                   {vessel.name}
                 </Link>
               </DefRow>
             ) : null}
             {shipment ? (
-              <DefRow label={<span className="inline-flex items-center gap-2"><Package className="h-3.5 w-3.5" />Shipment</span>} mono={false}>
+              <DefRow label={<span className="inline-flex items-center gap-2"><Package className="h-3.5 w-3.5" />{vocabulary.shipment}</span>} mono={false}>
                 <Link to={`/shipments/${shipment.id}`} className="break-all text-harbor hover:underline">
                   {shipment.label ?? shipment.id}
                 </Link>

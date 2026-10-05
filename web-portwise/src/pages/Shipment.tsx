@@ -135,10 +135,10 @@ function ShipmentPicker({ port, s }: { port: PortSnapshot; s: ShipmentT }) {
   );
 }
 
-function ShipmentFacts({ s }: { s: ShipmentT }) {
+function ShipmentFacts({ s, port }: { s: ShipmentT; port: PortSnapshot }) {
   if (!s.meta) return null;
   return (
-    <Panel className="w-full shrink-0 p-4" aria-label={`Shipment ${s.label ?? s.id}`}>
+    <Panel className="w-full shrink-0 p-4" aria-label={`${port.vocabulary.shipment} ${s.label ?? s.id}`}>
       <p className="eyebrow">{s.consignee}</p>
       <h2 className="mt-0.5 break-all font-mono text-[15px] font-bold text-ink">{s.label ?? s.id}</h2>
       {s.hold ? (
@@ -159,17 +159,18 @@ function Journey({ s, port }: { s: ShipmentT; port: PortSnapshot }) {
   const done = s.current >= s.steps.length && !s.hold;
   const tracked = !!s.meta;
   return (
-    <Panel className="flex flex-col gap-4 px-4 py-4 lg:flex-row lg:items-stretch lg:px-6" aria-label="Shipment journey">
+    <Panel className="flex flex-col gap-4 px-4 py-4 lg:flex-row lg:items-stretch lg:px-6" aria-label={port.vocabulary.journey}>
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-          <h1 className="text-[17px] font-bold text-ink">Shipment journey</h1>
+          <h1 className="text-[17px] font-bold text-ink">{port.vocabulary.journey}</h1>
           <p className="text-[12.5px] text-slate">
-            {tracked ? (done ? "Settled" : "Rollout in progress") : s.direction === "import" ? "Import" : "Export"} · live progress through the terminal
             {port.shipments ? (
-              <span className="ml-2 font-mono text-[11.5px] tnum">
+              <span className="font-mono text-[11.5px] tnum">
                 {port.shipments.filter(isActive).length} active · {port.shipments.length} total
               </span>
-            ) : null}
+            ) : (
+              <>{s.direction === "import" ? "Import" : "Export"} · live progress through the terminal</>
+            )}
           </p>
         </div>
         <div className="scroll-thin sm:overflow-x-auto">
@@ -266,11 +267,12 @@ function Journey({ s, port }: { s: ShipmentT; port: PortSnapshot }) {
 }
 
 function WaitingForShipments() {
+  const { vocabulary } = usePortSnapshot();
   return (
     <HudLayout
       bottom={
-        <Panel className="w-full px-5 py-4" aria-label="Shipments">
-          <h1 className="text-[16px] font-bold text-ink">Shipments</h1>
+        <Panel className="w-full px-5 py-4" aria-label={vocabulary.shipments}>
+          <h1 className="text-[16px] font-bold text-ink">{vocabulary.shipments}</h1>
           <p className="mt-1 text-[13px] text-slate">Waiting for workloads from the data source.</p>
         </Panel>
       }
@@ -303,6 +305,6 @@ export default function Shipment() {
     if (status.kind !== "live") return <WaitingForShipments />;
     return <Navigate to="/shipments" replace />;
   }
-  const right = port.shipments ? <ShipmentFacts s={s} /> : <GateTable />;
+  const right = port.shipments ? <ShipmentFacts s={s} port={port} /> : <GateTable />;
   return <HudLayout right={right} bottom={<Journey s={s} port={port} />} sheetOrder={["bottom", "right"]} />;
 }
