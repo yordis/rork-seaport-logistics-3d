@@ -240,12 +240,22 @@ In another, start the app and pick **Live cluster** in the top bar:
 bun run dev
 ```
 
+With [mise](https://mise.jdx.dev), put your values in a `mise.local.toml` at the repo root (it is gitignored) and run `mise run k8s:proxy` and `mise run dev` from anywhere in the repo:
+
+```toml
+[env]
+KUBE_CONTEXT = "my-cluster"
+PORTWISE_PORT = "5180"
+```
+
 The browser never sees credentials. The Vite dev server forwards `/k8s/*` to the proxy, and `kubectl proxy` signs requests with your local kubeconfig. The proxy rejects `POST`, `PUT`, `PATCH`, `DELETE` and `CONNECT`, and the app only issues `GET` list and watch requests.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `KUBE_CONTEXT` | none, required | kubeconfig context for `bun run k8s:proxy` |
+| `K8S_PROXY_PORT` | `8001` | Port `bun run k8s:proxy` listens on |
 | `K8S_PROXY_URL` | `http://127.0.0.1:8001` | Where the dev server forwards `/k8s/*` |
+| `PORTWISE_PORT` | `8080` | Dev server port; when set, startup fails instead of picking another port |
 | `VITE_K8S_API_BASE` | `/k8s` | API base URL the browser calls |
 
 The status pill next to the switch shows **Connecting**, **Live**, **Error** or **Start kubectl proxy** when the API is unreachable. Hover it for the reason. The time bar's rewind and scrub controls are off in live mode, since a watch stream only has the present.

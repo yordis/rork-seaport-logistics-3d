@@ -7,7 +7,8 @@ import { defineConfig } from "vite";
 export default defineConfig(({ mode }) => ({
   server: {
     host: "::",
-    port: 8080,
+    port: Number(process.env.PORTWISE_PORT ?? 8080),
+    strictPort: !!process.env.PORTWISE_PORT,
     hmr: {
       overlay: false,
     },

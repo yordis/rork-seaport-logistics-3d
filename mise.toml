@@ -1,0 +1,16 @@
+[tools]
+bun = "1.4.2"
+
+[env]
+K8S_PROXY_PORT = "8001"
+K8S_PROXY_URL = "http://127.0.0.1:{{env.K8S_PROXY_PORT}}"
+
+[tasks."k8s:proxy"]
+description = "Read-only kubectl proxy for live cluster mode (set KUBE_CONTEXT in mise.local.toml)"
+dir = "{{config_root}}/web-portwise"
+run = "bun run k8s:proxy"
+
+[tasks.dev]
+description = "Vite dev server"
+dir = "{{config_root}}/web-portwise"
+run = "bun run dev"
