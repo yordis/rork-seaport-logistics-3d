@@ -8,6 +8,7 @@ import { SIM_START_SEC, fmtClock, timeControl, useClock } from "@/sim/simStore";
 import { usePort } from "@/state/PortProvider";
 import { CARRIER_NAME, PORT_NAME } from "@/data/port";
 import { usePortSnapshot } from "@/source/store";
+import type { SourceKind } from "@/source/model";
 import { AlertRow } from "./AlertsPanel";
 import { SourceToggle } from "./SourceToggle";
 
@@ -44,6 +45,38 @@ function LiveClock() {
       {snap.rate === 0 ? "Paused" : "Replay"}
       {time}
     </button>
+  );
+}
+
+function LocationPill({ source, berths }: { source: SourceKind; berths: number }) {
+  const live = source === "live";
+  const pill = "hidden items-center gap-2 whitespace-nowrap rounded-full border border-hairline bg-paper px-3 py-1.5 text-[12.5px] font-semibold text-ink hover:bg-sand 2xl:flex";
+  if (live) {
+    return (
+      <div className={pill}>
+        <MapPin className="h-3.5 w-3.5 text-signal" />
+        Live cluster · Miami
+      </div>
+    );
+  }
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger className={pill}>
+        <MapPin className="h-3.5 w-3.5 text-signal" />
+        {PORT_NAME} · Singapore
+        <ChevronDown className="h-3.5 w-3.5 text-slate" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-64">
+        <DropdownMenuLabel className="text-[11px] uppercase tracking-wider text-slate">Authorized terminals</DropdownMenuLabel>
+        <DropdownMenuItem className="flex items-center justify-between font-semibold">
+          {PORT_NAME} · {berths} berths
+          <span className="text-[11px] font-medium text-moss">Viewing</span>
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem disabled>Tuas Port · not connected</DropdownMenuItem>
+        <DropdownMenuItem disabled>Jurong Port · not connected</DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -104,23 +137,7 @@ export function TopBar() {
       </button>
 
       <div className="flex shrink-0 items-center gap-1 sm:gap-2 md:ml-auto">
-        <DropdownMenu>
-          <DropdownMenuTrigger className="hidden items-center gap-2 whitespace-nowrap rounded-full border border-hairline bg-paper px-3 py-1.5 text-[12.5px] font-semibold text-ink hover:bg-sand 2xl:flex">
-            <MapPin className="h-3.5 w-3.5 text-signal" />
-            {PORT_NAME} · Singapore
-            <ChevronDown className="h-3.5 w-3.5 text-slate" />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-64">
-            <DropdownMenuLabel className="text-[11px] uppercase tracking-wider text-slate">Authorized terminals</DropdownMenuLabel>
-            <DropdownMenuItem className="flex items-center justify-between font-semibold">
-              {PORT_NAME} · {port.berths.length} berths
-              <span className="text-[11px] font-medium text-moss">Viewing</span>
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem disabled>Tuas Port · not connected</DropdownMenuItem>
-            <DropdownMenuItem disabled>Jurong Port · not connected</DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <LocationPill source={port.source} berths={port.berths.length} />
 
         <SourceToggle />
 
@@ -142,9 +159,9 @@ export function TopBar() {
         </Popover>
 
         <div className="hidden items-center gap-2.5 pl-1 md:flex">
-          <div className="grid h-9 w-9 place-items-center rounded-full bg-ink text-[12.5px] font-bold text-paper">AN</div>
+          <div className="grid h-9 w-9 place-items-center rounded-full bg-ink text-[12.5px] font-bold text-paper">YP</div>
           <div className="hidden whitespace-nowrap leading-tight min-[1700px]:block">
-            <p className="text-[13px] font-semibold text-ink">Alex Nguyen</p>
+            <p className="text-[13px] font-semibold text-ink">Yordis Prieto</p>
             <p className="text-[11.5px] text-slate">{CARRIER_NAME}</p>
           </div>
         </div>
