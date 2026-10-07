@@ -1,4 +1,4 @@
-import type { Alert, CraneActivity, Container, DetailRow, QuayCrane, Selection, StatusTone, Vessel, YardBlock } from "@/data/types";
+import type { Alert, CraneActivity, Container, DeckCargo, DetailRow, QuayCrane, Selection, StatusTone, Vessel, YardBlock } from "@/data/types";
 import { BAY_PITCH, BLOCK_BAYS, BLOCK_HALF_X, BLOCK_HALF_Z, BLOCK_ROWS, BLOCK_TIERS, CONTAINER_H, ROW_PITCH, craneXs, layoutBerths } from "@/data/layout";
 import { YARD_BLOCKS } from "@/data/port";
 import { assignBerths, assignSlots, naturalCompare, stableHash } from "../assign";
@@ -6,7 +6,7 @@ import type { KpiReading, PortSnapshot } from "../model";
 import type { ClusterState } from "./reducer";
 import type { K8sEvent, K8sNode, K8sPod, PodPhase } from "./types";
 import { toPodPhase } from "./types";
-import { K8S_PORT_MAPPING } from "./mapping";
+import { K8S_PORT_MAPPING, namespaceColor } from "./mapping";
 import { collectWorkloads, projectShipments, resolveOwnership } from "./rollouts";
 import type { K8sPortMapping, NodeStateStyle } from "./mapping";
 
@@ -112,6 +112,9 @@ export function projectPort(state: ClusterState, activity: BerthActivity = {}, m
     const st = nodeState(node, m);
     const onNode = podsByNode.get(name) ?? [];
     const active = onNode.filter((p) => toPodPhase(p.status?.phase) === "Running").length;
+    const deck: DeckCargo[] = [...onNode]
+      .sort((a, b) => byName(a.metadata.creationTimestamp ?? "", b.metadata.creationTimestamp ?? "") || byName(a.metadata.name, b.metadata.name))
+      .map((p) => ({ id: p.metadata.uid, label: p.metadata.name, color: namespaceColor(p.metadata.namespace ?? "", m.pod.namespaceColors) }));
     const podCap = parseQuantity(node.status?.allocatable?.pods) ?? 110;
     const cpu = node.status?.allocatable?.cpu ?? "?";
     const info = node.status?.nodeInfo;
@@ -149,7 +152,7 @@ export function projectPort(state: ClusterState, activity: BerthActivity = {}, m
       hull: m.vessel.hulls[stableHash(name) % m.vessel.hulls.length],
       length: Math.min(vesselLength(node, m), room),
       inScene: true,
-      meta: { sourceId: node.metadata.uid, headline: st.headline, tone: st.tone, fill: clamp01(onNode.length / podCap), details },
+      meta: { sourceId: node.metadata.uid, headline: st.headline, tone: st.tone, fill: clamp01(onNode.length / podCap), details, deck },
     };
   });
 
@@ -259,7 +262,7 @@ export function projectPort(state: ClusterState, activity: BerthActivity = {}, m
         x: g.x - BLOCK_HALF_X + BAY_PITCH * (bay + 0.5),
         y: CONTAINER_H * (tier + 0.5) + 0.02,
         z: g.z - BLOCK_HALF_Z + ROW_PITCH * (row + 0.5),
-        color: style.color,
+        color: namespaceColor(ns, m.pod.namespaceColors),
         size: m.pod.size,
         category,
         cargo: images(pod)[0] ?? "",

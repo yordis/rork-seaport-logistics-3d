@@ -9,7 +9,7 @@ import { findContainer, usePortSnapshot } from "@/source/store";
 import { selKey, usePort } from "@/state/PortProvider";
 import { sceneRegistry, simT } from "@/sim/simStore";
 import { haptic } from "@/lib/haptics";
-import { Part, Selectable, mat, unitBox } from "./parts";
+import { Part, Selectable, SelectedContainer, mat, unitBox } from "./parts";
 import { Chip3D } from "./Chip3D";
 import type { ChipTone } from "./Chip3D";
 import { Glow, LIGHT } from "./nightLights";
@@ -88,24 +88,6 @@ export function YardContainers() {
         </mesh>
       ) : null}
       {selected ? <SelectedContainer x={selected.x} y={selected.y} z={selected.z} color={selected.color} /> : null}
-    </group>
-  );
-}
-
-function SelectedContainer({ x, y, z, color }: { x: number; y: number; z: number; color: string }) {
-  const ref = useRef<THREE.Group>(null);
-  useFrame(({ clock }) => {
-    if (ref.current) ref.current.position.y = y + 0.35 + Math.sin(clock.elapsedTime * 2.4) * 0.12;
-  });
-  return (
-    <group ref={ref} position={[x, y + 0.35, z]}>
-      <mesh geometry={unitBox} material={mat(color, { emissive: COLORS.signal, glow: 0.3 })} scale={[3.06, 1.3, 1.36]} castShadow raycast={() => null}>
-        <Outlines thickness={0.07} color={COLORS.signal} />
-      </mesh>
-      <mesh position={[0, 2.2, 0]} raycast={() => null}>
-        <coneGeometry args={[0.45, 0.9, 4]} />
-        <meshStandardMaterial color={COLORS.signal} emissive={COLORS.signal} emissiveIntensity={0.5} />
-      </mesh>
     </group>
   );
 }

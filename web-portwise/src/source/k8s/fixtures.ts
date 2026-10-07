@@ -8,8 +8,8 @@ export const node = (name: string, rv = "1", opts: { ready?: boolean; cpu?: stri
   },
 });
 
-export const pod = (name: string, namespace: string, rv = "1", opts: { phase?: string; nodeName?: string; scheduled?: boolean } = {}): K8sPod => ({
-  metadata: { uid: `uid-pod-${namespace}-${name}`, name, namespace, resourceVersion: rv },
+export const pod = (name: string, namespace: string, rv = "1", opts: { phase?: string; nodeName?: string; scheduled?: boolean; created?: string } = {}): K8sPod => ({
+  metadata: { uid: `uid-pod-${namespace}-${name}`, name, namespace, resourceVersion: rv, creationTimestamp: opts.created },
   spec: { nodeName: opts.nodeName, containers: [{ name: "app", image: "example/app:1" }] },
   status: {
     phase: opts.phase ?? "Running",

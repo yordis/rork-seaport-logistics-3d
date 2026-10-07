@@ -7,6 +7,13 @@ export interface DetailRow {
   value: string;
 }
 
+/** A single cargo unit shown on a vessel's deck. */
+export interface DeckCargo {
+  id: string;
+  label: string;
+  color: string;
+}
+
 /** Source-provided readout for an entity: when present, the HUD shows it instead of simulated figures. */
 export interface EntityMeta {
   sourceId: string;
@@ -15,6 +22,8 @@ export interface EntityMeta {
   /** 0..1, how full the entity is (deck load, block occupancy). */
   fill: number;
   details: DetailRow[];
+  /** Deck cargo for a vessel, one entry per unit, lowest tier first. */
+  deck?: DeckCargo[];
 }
 
 export type VesselStatus = "discharging" | "loading" | "arriving" | "scheduled";

@@ -5,7 +5,7 @@ import { namespace, node, pod, warning } from "./fixtures";
 import { parseQuantity, projectPort } from "./project";
 import type { ClusterAction, ClusterState } from "./reducer";
 import { clusterReducer, emptyCluster } from "./reducer";
-import { K8S_PORT_MAPPING } from "./mapping";
+import { K8S_PORT_MAPPING, namespaceColor } from "./mapping";
 import type { ResourceKey, ResourceObjects } from "./types";
 
 const listed = (tables: { [K in ResourceKey]?: ResourceObjects[K][] }): ClusterState =>
@@ -61,7 +61,7 @@ describe("projectPort", () => {
     expect(berthsOf(["node-c"])).toEqual({ "node-c": 1 });
   });
 
-  it("maps namespaces to blocks and pods to containers coloured by phase", () => {
+  it("maps namespaces to blocks and colors pods by namespace, with phase still carried in the detail labels", () => {
     const p = projectPort(
       listed({
         namespaces: [namespace("team-x"), namespace("team-y")],
@@ -70,9 +70,10 @@ describe("projectPort", () => {
     );
     expect(p.blocks.map((b) => b.meta?.headline)).toEqual(["team-x", "team-y"]);
     const block = p.blocks[0].id;
-    expect(p.containers.map((c) => [c.code, c.blockId, c.color])).toEqual([
-      ["job", block, K8S_PORT_MAPPING.pod.phases.Failed.color],
-      ["web", block, K8S_PORT_MAPPING.pod.phases.Running.color],
+    const nsColor = namespaceColor("team-x", K8S_PORT_MAPPING.pod.namespaceColors);
+    expect(p.containers.map((c) => [c.code, c.blockId, c.color, c.line])).toEqual([
+      ["job", block, nsColor, K8S_PORT_MAPPING.pod.phases.Failed.label],
+      ["web", block, nsColor, K8S_PORT_MAPPING.pod.phases.Running.label],
     ]);
     expect(p.containers[0].id).toBe("uid-pod-team-x-job");
     expect(p.containers[0].vesselId).toBe("node-node-a");
@@ -131,6 +132,28 @@ describe("projectPort", () => {
       ["uid-ev-e4", undefined],
     ]);
     expect(p.alerts[0].severity).toBe("danger");
+  });
+
+  it("stacks deck cargo from the pods on a node, oldest first, coloured by namespace", () => {
+    const p = projectPort(
+      listed({
+        nodes: [node("node-a"), node("node-b")],
+        pods: [
+          pod("c", "team-x", "1", { nodeName: "node-a", created: "2026-01-01T10:00:00Z" }),
+          pod("a", "team-x", "1", { nodeName: "node-a", phase: "Pending", created: "2026-01-01T08:00:00Z" }),
+          pod("b", "team-y", "1", { nodeName: "node-a", created: "2026-01-01T08:00:00Z" }),
+          pod("other", "team-z", "1", { nodeName: "node-b" }),
+        ],
+      }),
+    );
+    const vessel = p.vessels.find((v) => v.name === "node-a");
+    const teamX = namespaceColor("team-x", K8S_PORT_MAPPING.pod.namespaceColors);
+    const teamY = namespaceColor("team-y", K8S_PORT_MAPPING.pod.namespaceColors);
+    expect(vessel?.meta?.deck).toEqual([
+      { id: "uid-pod-team-x-a", label: "a", color: teamX },
+      { id: "uid-pod-team-y-b", label: "b", color: teamY },
+      { id: "uid-pod-team-x-c", label: "c", color: teamX },
+    ]);
   });
 
   it("marks a crane active from recorded scheduling activity", () => {

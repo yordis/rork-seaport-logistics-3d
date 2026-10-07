@@ -1,11 +1,11 @@
 import type { BlockCategory, Severity, StatusTone, VesselStatus } from "@/data/types";
 import { CONTAINER_COLORS } from "@/data/layout";
+import { stableHash } from "../assign";
 import type { PortVocabulary } from "../model";
 import type { PodPhase } from "./types";
 
 export interface PhaseStyle {
   label: string;
-  color: string;
   tone: StatusTone;
 }
 
@@ -55,15 +55,28 @@ export const K8S_PORT_MAPPING = {
   },
   pod: {
     phases: {
-      Running: { label: "Running", color: CONTAINER_COLORS.moss, tone: "moss" },
-      Pending: { label: "Pending", color: CONTAINER_COLORS.sand, tone: "amber" },
-      Failed: { label: "Failed", color: CONTAINER_COLORS.brick, tone: "brick" },
-      Succeeded: { label: "Succeeded", color: CONTAINER_COLORS.steel, tone: "harbor" },
-      Unknown: { label: "Unknown", color: "#8C8A84", tone: "slate" },
+      Running: { label: "Running", tone: "moss" },
+      Pending: { label: "Pending", tone: "amber" },
+      Failed: { label: "Failed", tone: "brick" },
+      Succeeded: { label: "Succeeded", tone: "harbor" },
+      Unknown: { label: "Unknown", tone: "slate" },
     } satisfies Record<PodPhase, PhaseStyle>,
     /** Pods in these phases, or with no node yet, wait at the anchorage. */
     waitingPhases: ["Pending"] as readonly PodPhase[],
     size: "Pod",
+    /** Deck cargo and yard containers are colored by namespace, not phase. */
+    namespaceColors: [
+      CONTAINER_COLORS.orange,
+      CONTAINER_COLORS.brick,
+      CONTAINER_COLORS.sand,
+      CONTAINER_COLORS.moss,
+      CONTAINER_COLORS.steel,
+      CONTAINER_COLORS.navy,
+      "#2E8B8B",
+      "#8FBF3F",
+      "#6E4C9E",
+      "#B5456B",
+    ] as readonly string[],
   },
   yard: {
     blocks: 40,
@@ -130,3 +143,8 @@ export const K8S_PORT_MAPPING = {
 } as const;
 
 export type K8sPortMapping = typeof K8S_PORT_MAPPING;
+
+/** Deterministic color for a namespace from a palette: same namespace always maps to the same entry. */
+export function namespaceColor(ns: string, palette: readonly string[]): string {
+  return palette[stableHash(ns) % palette.length];
+}
