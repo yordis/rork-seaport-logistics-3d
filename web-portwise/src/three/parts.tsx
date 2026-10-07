@@ -1,7 +1,8 @@
-import { createContext, memo, useContext, useMemo } from "react";
+import { createContext, memo, useContext, useMemo, useRef } from "react";
 import type { ReactNode } from "react";
 import * as THREE from "three";
-import type { ThreeEvent } from "@react-three/fiber";
+import { useFrame, type ThreeEvent } from "@react-three/fiber";
+import { Outlines } from "@react-three/drei";
 import type { Selection } from "@/data/types";
 import { selKey, usePort } from "@/state/PortProvider";
 import { COLORS } from "@/data/layout";
@@ -115,3 +116,22 @@ export function Selectable({ sel, children }: SelectableProps) {
 }
 
 export const useHighlight = (): number => useContext(HighlightCtx);
+
+/** Floating marker over a selected container box, in whatever local space its parent group uses. */
+export function SelectedContainer({ x, y, z, color }: { x: number; y: number; z: number; color: string }) {
+  const ref = useRef<THREE.Group>(null);
+  useFrame(({ clock }) => {
+    if (ref.current) ref.current.position.y = y + 0.35 + Math.sin(clock.elapsedTime * 2.4) * 0.12;
+  });
+  return (
+    <group ref={ref} position={[x, y + 0.35, z]}>
+      <mesh geometry={unitBox} material={mat(color, { emissive: COLORS.signal, glow: 0.3 })} scale={[3.06, 1.3, 1.36]} castShadow raycast={() => null}>
+        <Outlines thickness={0.07} color={COLORS.signal} />
+      </mesh>
+      <mesh position={[0, 2.2, 0]} raycast={() => null}>
+        <coneGeometry args={[0.45, 0.9, 4]} />
+        <meshStandardMaterial color={COLORS.signal} emissive={COLORS.signal} emissiveIntensity={0.5} />
+      </mesh>
+    </group>
+  );
+}

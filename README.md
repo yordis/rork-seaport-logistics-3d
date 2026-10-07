@@ -4,7 +4,7 @@
 
 # Portwise
 
-**A live, isometric 3D operations map of a container terminal, for the shipping line's view of the port.**
+**A live, isometric 3D operations map of a container terminal. Watch a simulated port, or point it at a real Kubernetes cluster.**
 
 Watch vessels arrive, quay cranes work, yard blocks fill up, trucks clear the gates and shipments make their way inland, all moving in real time in your browser.
 
@@ -12,7 +12,7 @@ Watch vessels arrive, quay cranes work, yard blocks fill up, trucks clear the ga
 
 <br />
 
-<img src="web-portwise/public/og-image.jpg" alt="Portwise: live 3D map of Pasir Panjang Terminal with quay cranes, container yard and logistics district" width="100%" />
+<img src="docs/portwise-live-cluster.jpg" alt="Portwise in live cluster mode: Kubernetes nodes berthed as ships with pods stacked on deck, namespaces as yard blocks, and a pod detail card open" width="100%" />
 
 </div>
 
@@ -27,6 +27,7 @@ Watch vessels arrive, quay cranes work, yard blocks fill up, trucks clear the ga
 - [Tech stack](#tech-stack)
 - [Getting started](#getting-started)
 - [Available scripts](#available-scripts)
+- [Live cluster mode](#live-cluster-mode)
 - [Project structure](#project-structure)
 - [Architecture](#architecture)
   - [One sim clock for everything](#one-sim-clock-for-everything)
@@ -61,7 +62,9 @@ The whole viewport is a low-poly three.js scene that never stops moving:
 
 The UI floats over the scene as crisp paper panels. The look is "morning nautical chart": cream chart paper, ink-navy type, signal-orange accents and pale seafoam water.
 
-> **Everything is simulated client-side.** There is no backend, no API key and no real AIS feed. Clone it, run it, and the port comes alive.
+> **The simulation runs entirely client-side.** There is no backend, no API key and no real AIS feed. Clone it, run it, and the port comes alive.
+>
+> Flip the **Live cluster** switch and the same scene becomes a read-only view of a Kubernetes cluster: nodes berth as ships, namespaces fill the yard, pods ride on deck, and image pulls and scheduling decisions drive the trucks. See [Live cluster mode](#live-cluster-mode).
 
 ---
 
@@ -104,6 +107,12 @@ This morning's scenario:
 ### 🌙 Night view
 - One toggle eases the scene into night. Crane floods, red aviation beacons, sodium yard masts, ship navigation lights (red port, green starboard, white masthead), truck head and tail lights, buoy blinkers and lit windows all come on.
 - The HUD stays on light paper, so the UI is always readable.
+
+### ☸️ Live cluster mode
+- The **Simulation / Live cluster** switch turns the scene into a read-only map of a Kubernetes cluster through a local `kubectl proxy`. No credentials ever reach the browser.
+- Nodes become vessels, namespaces become yard blocks, pods become containers on deck and in the yard, and workloads become shipments with a rollout timeline.
+- Trucks are driven by cluster events: an image pull is a truck arriving through the gate, a scheduling decision is a terminal tractor, and quiet lanes keep an empty grey shuttle moving so the yard stays readable.
+- The HUD switches to Kubernetes words (Node, Pod, Workload, Rollout) and pins the location to Miami, where the cluster behind the demo lives.
 
 ### 🧭 Operator HUD
 - **KPIs**: TEU today, crane productivity, on-time berthing, yard utilisation.
@@ -157,7 +166,8 @@ Mouse: drag to orbit, right-drag to pan, scroll to zoom. The camera rail in the 
 | Styling | Tailwind CSS 3, shadcn/ui (Radix primitives), `tailwindcss-animate` |
 | Icons | lucide-react |
 | Search | cmdk |
-| Data fetching | TanStack Query (wired in for a future live feed) |
+| Data fetching | TanStack Query |
+| Live data | Kubernetes list + watch over a read-only `kubectl proxy` |
 | Tests | Vitest (node and Playwright browser mode) |
 | Lint | ESLint 9 + typescript-eslint |
 | Package manager | Bun |
@@ -185,6 +195,8 @@ bun run dev
 
 Then open **http://localhost:8080**.
 
+With [mise](https://mise.jdx.dev) installed, `mise run dev` from anywhere in the repo does the same with the pinned Bun version.
+
 ### Production build
 
 ```bash
@@ -192,7 +204,7 @@ bun run build      # outputs to web-portwise/dist
 bun run preview    # serves the production build locally
 ```
 
-No environment variables are needed. The app is fully static.
+No environment variables are needed. The app is fully static. Only the optional [live cluster mode](#live-cluster-mode) talks to a server.
 
 ---
 
@@ -207,6 +219,7 @@ Run these from `web-portwise/`:
 | `bun run build:dev` | Build in development mode (unminified, easier to debug) |
 | `bun run preview` | Serve the built `dist/` locally |
 | `bun run lint` | Run ESLint over the project |
+| `bun run k8s:proxy` | Read-only `kubectl proxy` on port 8001 for [live cluster mode](#live-cluster-mode); needs `KUBE_CONTEXT` |
 | `bun run test` | Run unit tests, then browser tests |
 | `bun run test:watch` | Unit tests in watch mode |
 | `bun run test:browser` | Browser tests (Vitest + Playwright Chromium) in watch mode |
@@ -219,12 +232,91 @@ bun x tsc -p tsconfig.app.json --noEmit
 
 ---
 
+## Live cluster mode
+
+The simulation is the default. The **Simulation / Live cluster** switch in the top bar swaps it for a read-only view of a Kubernetes cluster. The choice is remembered per browser.
+
+### Run it
+
+In one terminal, start a read-only API proxy for the context you want to view:
+
+```bash
+cd web-portwise
+KUBE_CONTEXT=my-cluster bun run k8s:proxy
+```
+
+In another, start the app and pick **Live cluster** in the top bar:
+
+```bash
+bun run dev
+```
+
+With [mise](https://mise.jdx.dev), put your values in a `mise.local.toml` at the repo root (it is gitignored) and run `mise run k8s:proxy` and `mise run dev` from anywhere in the repo:
+
+```toml
+[env]
+KUBE_CONTEXT = "my-cluster"
+PORTWISE_PORT = "5180"
+```
+
+The browser never sees credentials. The Vite dev server forwards `/k8s/*` to the proxy, and `kubectl proxy` signs requests with your local kubeconfig. The proxy rejects `POST`, `PUT`, `PATCH`, `DELETE` and `CONNECT`, and the app only issues `GET` list and watch requests.
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `KUBE_CONTEXT` | none, required | kubeconfig context for `bun run k8s:proxy` |
+| `K8S_PROXY_PORT` | `8001` | Port `bun run k8s:proxy` listens on |
+| `K8S_PROXY_URL` | `http://127.0.0.1:8001` | Where the dev server forwards `/k8s/*` |
+| `PORTWISE_PORT` | `8080` | Dev server port; when set, startup fails instead of picking another port |
+| `VITE_K8S_API_BASE` | `/k8s` | API base URL the browser calls |
+
+The status pill next to the switch shows **Connecting**, **Live**, **Error** or **Start kubectl proxy** when the API is unreachable. Hover it for the reason.
+
+### What changes in live mode
+
+- The HUD speaks Kubernetes: **Node**, **Pod**, **Workload**, **Rollout**, and the search box looks for nodes, pods and workloads.
+- The time bar loses rewind and scrubbing. A watch stream only has the present, so the clock just runs.
+- The location pill reads **Live cluster · Miami** and the top bar shows the current operator.
+- The quay is laid out for the nodes you have: one berth per node, compressed to fit when there are many. Hull length follows allocatable CPU.
+- Shipments, AIS strait traffic and the logistics district stay simulated. Everything on the quay, in the yard and on the roads inside the terminal comes from the cluster.
+
+### How the cluster reads as a port
+
+| Cluster | Port |
+| --- | --- |
+| Node | Vessel at its own berth, in name order. Ready, cordoned and not-ready nodes get different headlines |
+| Pod on a node | Container on that vessel's deck, coloured by namespace. Click one for its card |
+| Namespace | Yard block, coloured by namespace; the 40 busiest get a block, the rest are summarised as overflow |
+| Pod in a block | Container in its namespace's block |
+| Pending or unscheduled pod | Counted on the anchorage marker |
+| Pod scheduled onto a node | The quay crane at that node's berth works for about two lift cycles |
+| Deployment, StatefulSet, DaemonSet, ReplicaSet, Job | Shipment with a rollout timeline: Created, Scheduled, Initialized, Containers ready, Rolled out |
+| Warning event | Alert, linked to the node, pod or namespace it concerns |
+
+### Trucks
+
+Trucks are the only thing that visibly moves on the ground, so they are driven by what the cluster is doing right now. Trips replay from the real event time, play once, and age out after 15 minutes.
+
+| Event | Truck |
+| --- | --- |
+| `Pulling` then `Pulled` | External truck from the gate to the node's apron. The plate is the image, the carrier is the registry, and the wait on the apron is the real pull time |
+| `Pulled` with no `Pulling` | Same trip with a short stop labelled **Already on node**, since the kubelet only logs `Pulled` for cached images |
+| `Scheduled` | Terminal tractor from the namespace's yard block to the node's crane, carrying the pod. Namespaces without a block arrive through the gate instead |
+
+Between events, up to 12 **steady-state shuttles** loop between a namespace's block and each node running its pods, busiest lanes first. They are drawn as empty grey tractors with a **STEADY STATE** label so they are never mistaken for a real movement. Clicking one explains what it stands for.
+
+### Where the mapping lives
+
+The whole mapping is data in `web-portwise/src/source/k8s/mapping.ts`: vocabulary, colours, berth and crane rules, alert severities, rollout steps and every truck parameter. `project.ts` applies it to the cluster state kept by `reducer.ts`, and `trips.ts` turns events into truck routes. The 3D scene and HUD only ever see the resulting port model in `src/source/model.ts`, so changing what a namespace or node becomes never touches rendering code.
+
+---
+
 ## Project structure
 
 ```text
 .
 ├── README.md
 ├── LICENSE
+├── docs/                          # README screenshots
 └── web-portwise/
     ├── index.html                 # Entry HTML, meta and Open Graph tags, Google Fonts
     ├── public/
@@ -242,7 +334,8 @@ bun x tsc -p tsconfig.app.json --noEmit
         │   │                      #   Crane/Truck cards, CameraRail, SearchDialog…
         │   └── ui/                # shadcn/ui primitives
         ├── data/                  # Static scenario: vessels, cranes, trucks, containers,
-        │                          #   facilities, drayage runs, layout constants, types
+        │                          #   facilities, drayage runs, layout constants, types,
+        │                          #   and the truck route builders shared by both sources
         ├── pages/                 # Route screens (Overview, Vessels, Yard, Shipment, Logistics…)
         ├── sim/
         │   ├── simStore.ts        # The sim clock, replay controls, derived live state
@@ -256,6 +349,19 @@ bun x tsc -p tsconfig.app.json --noEmit
         │       ├── tracker.ts     # Dead reckoning, blending, staleness, reception stats
         │       ├── static.ts      # AIS message 5 static & voyage data
         │       └── geo.ts         # WGS-84 ↔ scene projection, bearings, DMS formatting
+        ├── source/
+        │   ├── model.ts           # The port snapshot every screen renders, whatever the source
+        │   ├── simulation.ts      # The built-in scenario as a source
+        │   ├── store.ts           # Simulation / live switch, persisted
+        │   ├── assign.ts          # Stable berth and yard slot assignment
+        │   └── k8s/
+        │       ├── client.ts      # List + watch over the read-only proxy
+        │       ├── reducer.ts     # Cluster state from watch events
+        │       ├── mapping.ts     # How the cluster reads as a port (all data)
+        │       ├── project.ts     # Cluster state → port snapshot
+        │       ├── rollouts.ts    # Workloads → shipments with rollout steps
+        │       ├── trips.ts       # Events → truck trips and steady-state shuttles
+        │       └── liveStore.ts   # Connection status and the live snapshot
         ├── state/
         │   ├── PortProvider.tsx   # Selection, routing and camera focus
         │   ├── boot.ts            # Boot stage store
@@ -349,6 +455,8 @@ Then the cover fades out, the HUD mounts and the camera fly-in starts. A 30 s sa
 | --- | --- | --- |
 | `simStore` | Module store + `useSyncExternalStore` | Clock, replay controls, derived live numbers, alerts, events |
 | `PortProvider` | React context (`@nkzw/create-context-hook`) | Current selection, camera focus, route sync |
+| `source/store` | Module store, persisted to `localStorage` | Simulation / live cluster switch |
+| `k8s/liveStore` | Module store | Cluster watch, connection status, projected live snapshot |
 | `nightMode` | Module store, persisted to `localStorage` | Day/night toggle |
 | `hudVisibility` | Module store | Hide panels |
 | `boot` | Module store | Boot progress and reveal |
@@ -364,6 +472,7 @@ All scenario data lives in plain TypeScript under `src/data/` and `src/sim/`:
 | What to change | Where |
 | --- | --- |
 | Port name, carrier, vessels, cranes, trucks, alerts | `src/data/port.ts` |
+| How a Kubernetes cluster reads as a port | `src/source/k8s/mapping.ts` |
 | Yard containers and shipments | `src/data/containers.ts` |
 | Logistics facilities | `src/data/facilities.ts` |
 | Drayage runs | `src/data/drayage.ts` |
@@ -453,6 +562,8 @@ Ideas the project is open to:
 - [ ] Multi-terminal switching (Tuas, Jurong)
 - [ ] Level-of-detail labels that hide trucks and blocks when zoomed out
 - [ ] Unit tests for the NMEA encoder/decoder and the dead-reckoning tracker
+- [ ] More live sources behind `src/source/model.ts` (Nomad, Docker, a CI queue)
+- [ ] Live shipments and logistics district from cluster data
 - [ ] Shareable deep links to a moment in time (`?t=…`)
 - [ ] Localisation of the HUD
 - [ ] Responsive tablet layout

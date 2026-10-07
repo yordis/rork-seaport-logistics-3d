@@ -1,21 +1,24 @@
 import { memo, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
-import { useFrame } from "@react-three/fiber";
+import { useFrame, type ThreeEvent } from "@react-three/fiber";
 import { Outlines, Text } from "@react-three/drei";
-import type { Vessel } from "@/data/types";
-import { COLORS, CONTAINER_COLORS, SHIP_Z, WATER_Y, berthX } from "@/data/layout";
+import type { DeckCargo, StatusTone, Vessel } from "@/data/types";
+import type { AnchorageQueue } from "@/source/model";
+import { ANCHOR_ORIGIN, COLORS, CONTAINER_COLORS, SHIP_Z, WATER_Y, anchorPosition } from "@/data/layout";
 import { mulberry32 } from "@/data/containers";
 import { fmtClock, sceneRegistry, sim, simT, useSimTick } from "@/sim/simStore";
 import { aisFix, newFix } from "@/sim/ais/tracker";
 import { TRANSITS, VISIBLE_X, portCall } from "@/sim/ais/portCalls";
 import type { Transit } from "@/sim/ais/portCalls";
 import { bearingToRotY } from "@/sim/ais/geo";
-import { Part, Selectable, mat, unitBox, unitCyl, useHighlight } from "./parts";
+import { Part, Selectable, SelectedContainer, mat, unitBox, unitCyl, useHighlight } from "./parts";
 import { Chip3D } from "./Chip3D";
 import type { ChipTone } from "./Chip3D";
 import { FONT_URL } from "./Terrain";
 import { Glow, LIGHT, Pool, litMat } from "./nightLights";
-import { usePort } from "@/state/PortProvider";
+import { haptic } from "@/lib/haptics";
+import { selKey, usePort } from "@/state/PortProvider";
+import { berthXOf, usePortSnapshot } from "@/source/store";
 
 const BEAM = 7.6;
 const HULL_H = 4.2;
@@ -41,12 +44,10 @@ interface DeckSlot {
   x: number;
   y: number;
   z: number;
-  color: THREE.Color;
 }
 
-function deckSlots(length: number, seed: number): DeckSlot[] {
-  const r = mulberry32(seed);
-  const palette = [CONTAINER_COLORS.orange, CONTAINER_COLORS.navy, CONTAINER_COLORS.brick, CONTAINER_COLORS.moss, CONTAINER_COLORS.sand, CONTAINER_COLORS.steel, CONTAINER_COLORS.orange];
+/** Deck slot positions (bay/row/tier), sorted so the lowest tier across the whole deck fills first. */
+function deckSlotGeometry(length: number): DeckSlot[] {
   const bays = Math.floor((length - 14) / 3.15);
   const startX = -length / 2 + 7.6;
   const slots: DeckSlot[] = [];
@@ -58,7 +59,6 @@ function deckSlots(length: number, seed: number): DeckSlot[] {
           x: startX + b * 3.15 + 1.5,
           y: DECK_Y + 0.65 + t * 1.3,
           z: -2.64 + row * 1.32,
-          color: new THREE.Color(palette[Math.floor(r() * palette.length)]),
         });
       }
     }
@@ -66,22 +66,32 @@ function deckSlots(length: number, seed: number): DeckSlot[] {
   return slots.sort((a, b) => a.y - b.y);
 }
 
+/** Random cargo colors for simulated slots (no live source data). */
+function randomDeckColors(count: number, seed: number): string[] {
+  const r = mulberry32(seed);
+  const palette = [CONTAINER_COLORS.orange, CONTAINER_COLORS.navy, CONTAINER_COLORS.brick, CONTAINER_COLORS.moss, CONTAINER_COLORS.sand, CONTAINER_COLORS.steel, CONTAINER_COLORS.orange];
+  return Array.from({ length: count }, () => palette[Math.floor(r() * palette.length)]);
+}
+
 interface ShipModelProps {
   length: number;
   hull: string;
   name: string;
   seed: number;
-  /** Returns fraction (0..1) of deck slots to show. */
+  /** Returns fraction (0..1) of deck slots to show. Ignored when `deck` is present. */
   fill: () => number;
+  /** Live cargo, one entry per unit shown. Overrides `fill`-driven random slots. */
+  deck?: DeckCargo[];
 }
 
 /** Low-poly container ship facing +x. Origin is at the waterline. */
-export const ShipModel = memo(function ShipModel({ length, hull, name, seed, fill }: ShipModelProps) {
+export const ShipModel = memo(function ShipModel({ length, hull, name, seed, fill, deck }: ShipModelProps) {
   const hl = useHighlight();
   const hullGeo = useMemo(() => hullGeometry(length, HULL_H), [length]);
   const bootGeo = useMemo(() => hullGeometry(length, 2.1), [length]);
   const sheerGeo = useMemo(() => hullGeometry(length, 0.35), [length]);
-  const slots = useMemo(() => deckSlots(length, seed), [length, seed]);
+  const slots = useMemo(() => deckSlotGeometry(length), [length]);
+  const simColors = useMemo(() => randomDeckColors(slots.length, seed), [slots.length, seed]);
   const inst = useRef<THREE.InstancedMesh>(null);
   const lastCount = useRef<number>(-1);
 
@@ -94,21 +104,65 @@ export const ShipModel = memo(function ShipModel({ length, hull, name, seed, fil
       o.scale.set(3.0, 1.25, 1.26);
       o.updateMatrix();
       m.setMatrixAt(i, o.matrix);
-      m.setColorAt(i, s.color);
     });
     m.instanceMatrix.needsUpdate = true;
-    if (m.instanceColor) m.instanceColor.needsUpdate = true;
+    m.computeBoundingSphere();
   }, [slots]);
+
+  useLayoutEffect(() => {
+    const m = inst.current;
+    if (!m) return;
+    const colors = deck ? deck.map((c) => c.color) : simColors;
+    const n = Math.min(colors.length, slots.length);
+    const c = new THREE.Color();
+    for (let i = 0; i < n; i++) {
+      c.set(colors[i]);
+      m.setColorAt(i, c);
+    }
+    if (m.instanceColor) m.instanceColor.needsUpdate = true;
+  }, [slots, deck, simColors]);
+
+  const deckCount = deck ? Math.min(deck.length, slots.length) : 0;
 
   useFrame(() => {
     const m = inst.current;
     if (!m) return;
-    const count = Math.round(slots.length * Math.max(0, Math.min(1, fill())));
+    const count = deck ? deckCount : Math.round(slots.length * Math.max(0, Math.min(1, fill())));
     if (count !== lastCount.current) {
       m.count = count;
       lastCount.current = count;
     }
   });
+
+  const { selection, hovered, setHovered, open } = usePort();
+
+  const onDeckMove = (e: ThreeEvent<PointerEvent>) => {
+    e.stopPropagation();
+    if (!deck || e.instanceId === undefined) return;
+    const d = deck[e.instanceId];
+    if (d && selKey(hovered) !== `container:${d.id}`) setHovered({ kind: "container", id: d.id });
+    document.body.style.cursor = "pointer";
+  };
+  const onDeckOut = (e: ThreeEvent<PointerEvent>) => {
+    e.stopPropagation();
+    setHovered(null);
+    document.body.style.cursor = "";
+  };
+  const onDeckClick = (e: ThreeEvent<MouseEvent>) => {
+    e.stopPropagation();
+    if (e.delta > 6 || !deck || e.instanceId === undefined) return;
+    const d = deck[e.instanceId];
+    if (!d) return;
+    haptic("selection");
+    open({ kind: "container", id: d.id });
+  };
+
+  const deckIndexOf = (sel: typeof selection): number =>
+    deck && sel?.kind === "container" ? deck.findIndex((d) => d.id === sel.id) : -1;
+  const hoverIdx = deckIndexOf(hovered);
+  const selIdx = deckIndexOf(selection);
+  const hoverSlot = hoverIdx >= 0 && hoverIdx < deckCount ? slots[hoverIdx] : undefined;
+  const selSlot = selIdx >= 0 && selIdx < deckCount ? slots[selIdx] : undefined;
 
   const sx = -length / 2;
   return (
@@ -119,9 +173,26 @@ export const ShipModel = memo(function ShipModel({ length, hull, name, seed, fil
       <mesh geometry={bootGeo} material={mat("#B23A33", { rough: 0.7 })} rotation={[-Math.PI / 2, 0, 0]} position={[0, -DRAFT - 0.05, 0]} scale={[1.004, 1.012, 1]} />
       <mesh geometry={sheerGeo} material={mat("#F4F1EA")} rotation={[-Math.PI / 2, 0, 0]} position={[0, DECK_Y - 0.36, 0]} scale={[1.003, 1.01, 1]} />
       <mesh geometry={unitBox} material={mat("#5B6470")} position={[0.6, DECK_Y + 0.05, 0]} scale={[length - 9, 0.1, BEAM - 0.6]} receiveShadow />
-      <instancedMesh ref={inst} args={[undefined, undefined, slots.length]} geometry={unitBox} castShadow receiveShadow>
+      <instancedMesh
+        ref={inst}
+        args={[undefined, undefined, slots.length]}
+        geometry={unitBox}
+        castShadow
+        receiveShadow
+        onPointerOver={deck ? onDeckMove : undefined}
+        onPointerMove={deck ? onDeckMove : undefined}
+        onPointerOut={deck ? onDeckOut : undefined}
+        onClick={deck ? onDeckClick : undefined}
+      >
         <meshStandardMaterial roughness={0.8} />
       </instancedMesh>
+      {hoverSlot && hoverIdx !== selIdx ? (
+        <mesh geometry={unitBox} position={[hoverSlot.x, hoverSlot.y, hoverSlot.z]} scale={[3.02, 1.27, 1.32]} raycast={() => null}>
+          <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+          <Outlines thickness={0.05} color={COLORS.signal} opacity={0.8} transparent />
+        </mesh>
+      ) : null}
+      {selSlot && deck ? <SelectedContainer x={selSlot.x} y={selSlot.y} z={selSlot.z} color={deck[selIdx].color} /> : null}
       {/* Accommodation block */}
       <Part position={[sx + 3.4, DECK_Y + 3.3, 0]} scale={[4, 6.6, 6.4]} color="#F4F1EA" />
       {[1.6, 3.4, 5.2].map((y) => (
@@ -140,7 +211,7 @@ export const ShipModel = memo(function ShipModel({ length, hull, name, seed, fil
           font={FONT_URL}
           fontSize={1.05}
           color="#F4F1EA"
-          position={[length / 2 - 9, 0.4, side * (BEAM / 2 + 0.02)]}
+          position={[length / 2 - 9, 1.1, side * (BEAM / 2 + 0.02)]}
           rotation={[0, side === 1 ? 0 : Math.PI, 0]}
           anchorX={side === 1 ? "right" : "left"}
           letterSpacing={0.08}
@@ -219,12 +290,36 @@ function Tug({ color = "#2F5D4E" }: { color?: string }) {
 
 const fmtKn = (kn: number): string => `${kn.toFixed(1)} kn`;
 
+const chipTone = (tone: StatusTone): ChipTone => (tone === "slate" ? "ink" : tone);
+
+/** Deck load for the ship model: source-provided fill when present, otherwise the simulated cargo progress. */
+function deckFill(vessel: Vessel): () => number {
+  if (vessel.meta) {
+    const k = 0.1 + 0.9 * vessel.meta.fill;
+    return () => k;
+  }
+  return () => {
+    const live = sim.vessels[vessel.id];
+    if (vessel.status === "loading") return 0.25 + 0.75 * (live.loaded / vessel.loadTotal);
+    return 0.3 + 0.7 * (1 - live.discharged / vessel.dischargeTotal);
+  };
+}
+
 /** Floating label: cargo progress alongside, or the AIS movement state while the ship is on the move. */
 function VesselLabel({ vessel, y }: { vessel: Vessel; y: number }) {
   useSimTick();
   const { selection, view, open } = usePort();
   const selected = selection?.kind === "vessel" && selection.id === vessel.id;
   if (!(selected || view === "overview" || view === "vessels")) return null;
+  if (vessel.meta) {
+    return (
+      <Chip3D position={[0, y, 0]} tone={chipTone(vessel.meta.tone)} active={selected} onClick={() => open({ kind: "vessel", id: vessel.id })}>
+        <span className="font-mono">
+          {vessel.short} · {vessel.meta.headline} {Math.round(vessel.meta.fill * 100)}%
+        </span>
+      </Chip3D>
+    );
+  }
   const live = sim.vessels[vessel.id];
   const call = sim.calls[vessel.id];
   let text = vessel.short;
@@ -264,6 +359,7 @@ function VesselLabel({ vessel, y }: { vessel: Vessel; y: number }) {
 /** A ship moored alongside its berth. */
 export function BerthedVessel({ vessel }: { vessel: Vessel }) {
   const group = useRef<THREE.Group>(null);
+  const port = usePortSnapshot();
   useEffect(() => {
     const g = group.current;
     if (g) sceneRegistry.set(`vessel:${vessel.id}`, g);
@@ -271,21 +367,14 @@ export function BerthedVessel({ vessel }: { vessel: Vessel }) {
       sceneRegistry.delete(`vessel:${vessel.id}`);
     };
   }, [vessel.id]);
-  const fill = useMemo(
-    () => () => {
-      const live = sim.vessels[vessel.id];
-      if (vessel.status === "loading") return 0.25 + 0.75 * (live.loaded / vessel.loadTotal);
-      return 0.3 + 0.7 * (1 - live.discharged / vessel.dischargeTotal);
-    },
-    [vessel],
-  );
+  const fill = useMemo(() => deckFill(vessel), [vessel]);
   useFrame(() => {
     if (group.current) group.current.position.y = WATER_Y + Math.sin(simT() * 0.6 + vessel.berth) * 0.05;
   });
   return (
-    <group ref={group} position={[berthX(vessel.berth), WATER_Y, SHIP_Z]}>
+    <group ref={group} position={[berthXOf(vessel.berth, port), WATER_Y, SHIP_Z]}>
       <Selectable sel={{ kind: "vessel", id: vessel.id }}>
-        <ShipModel length={vessel.length} hull={vessel.hull} name={vessel.short} seed={vessel.berth * 31} fill={fill} />
+        <ShipModel length={vessel.length} hull={vessel.hull} name={vessel.short} seed={vessel.berth * 31} fill={fill} deck={vessel.meta?.deck} />
       </Selectable>
       <VesselLabel vessel={vessel} y={DECK_Y + 9.5} />
     </group>
@@ -313,14 +402,7 @@ export function PortCallVessel({ vessel }: { vessel: Vessel }) {
   const wake = useRef<number>(0);
   const fix = useMemo(newFix, []);
   const call = useMemo(() => portCall(vessel.id), [vessel.id]);
-  const fill = useMemo(
-    () => () => {
-      const live = sim.vessels[vessel.id];
-      if (vessel.status === "loading") return 0.25 + 0.75 * (live.loaded / vessel.loadTotal);
-      return 0.3 + 0.7 * (1 - live.discharged / vessel.dischargeTotal);
-    },
-    [vessel],
-  );
+  const fill = useMemo(() => deckFill(vessel), [vessel]);
 
   useEffect(() => {
     const g = group.current;
@@ -366,7 +448,7 @@ export function PortCallVessel({ vessel }: { vessel: Vessel }) {
     <group ref={group}>
       <Wake length={vessel.length} strength={wake} />
       <Selectable sel={{ kind: "vessel", id: vessel.id }}>
-        <ShipModel length={vessel.length} hull={vessel.hull} name={vessel.short} seed={vessel.berth * 31 + vessel.length} fill={fill} />
+        <ShipModel length={vessel.length} hull={vessel.hull} name={vessel.short} seed={vessel.berth * 31 + vessel.length} fill={fill} deck={vessel.meta?.deck} />
       </Selectable>
       <group ref={tugA} visible={false}>
         <Tug />
@@ -458,6 +540,56 @@ export function ChannelTraffic() {
           </group>
         ))}
       </group>
+    </group>
+  );
+}
+
+/** A ship riding at anchor while it waits for a berth. */
+export function AnchoredVessel({ vessel }: { vessel: Vessel }) {
+  const group = useRef<THREE.Group>(null);
+  const [x, z] = anchorPosition(vessel.anchorSlot ?? 0);
+  const fill = useMemo(() => deckFill(vessel), [vessel]);
+  useEffect(() => {
+    const g = group.current;
+    if (g) sceneRegistry.set(`vessel:${vessel.id}`, g);
+    return () => {
+      sceneRegistry.delete(`vessel:${vessel.id}`);
+    };
+  }, [vessel.id]);
+  useFrame(() => {
+    const g = group.current;
+    if (!g) return;
+    const t = simT();
+    g.position.y = WATER_Y + Math.sin(t * 0.7 + (vessel.anchorSlot ?? 0)) * 0.06;
+    g.rotation.y = 0.35 + Math.sin(t * 0.05 + (vessel.anchorSlot ?? 0)) * 0.08;
+  });
+  return (
+    <group ref={group} position={[x, WATER_Y, z]}>
+      <Selectable sel={{ kind: "vessel", id: vessel.id }}>
+        <ShipModel length={vessel.length} hull={vessel.hull} name={vessel.short} seed={(vessel.anchorSlot ?? 0) * 17 + vessel.length} fill={fill} deck={vessel.meta?.deck} />
+      </Selectable>
+      <VesselLabel vessel={vessel} y={DECK_Y + 9.5} />
+    </group>
+  );
+}
+
+/** Buoy with a count chip for work queued outside the port. */
+export function AnchorageMarker({ queue }: { queue: AnchorageQueue }) {
+  const ref = useRef<THREE.Group>(null);
+  useFrame(() => {
+    const g = ref.current;
+    if (!g) return;
+    const t = simT();
+    g.position.y = WATER_Y + 0.2 + Math.sin(t * 1.4) * 0.18;
+  });
+  return (
+    <group ref={ref} position={[ANCHOR_ORIGIN[0] - 40, WATER_Y, ANCHOR_ORIGIN[1] - 14]}>
+      <mesh geometry={unitCyl} material={mat(COLORS.amber)} scale={[2.2, 2.4, 2.2]} castShadow />
+      <mesh geometry={unitBox} material={mat(COLORS.ink)} position={[0, 2.4, 0]} scale={[0.8, 2.6, 0.8]} />
+      <Glow position={[0, 4.2, 0]} color={LIGHT.warm} size={3} blink={1.6} />
+      <Chip3D position={[0, 6.5, 0]} tone={chipTone(queue.tone)} pulse>
+        <span className="font-mono">{queue.label}</span>
+      </Chip3D>
     </group>
   );
 }

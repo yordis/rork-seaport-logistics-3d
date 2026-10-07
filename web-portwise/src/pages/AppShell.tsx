@@ -8,6 +8,7 @@ import { useIsCompact } from "@/hooks/useMediaQuery";
 import { usePort } from "@/state/PortProvider";
 import { useBootRevealed } from "@/state/boot";
 import { installTapHaptics } from "@/lib/haptics";
+import { useDataSource, useLiveConnection } from "@/source/store";
 
 const PortScene = lazy(() => import("@/three/PortScene"));
 
@@ -17,6 +18,8 @@ export default function AppShell() {
   const { closeOverride } = usePort();
   const isRevealed = useBootRevealed();
   const isCompact = useIsCompact();
+  const isLive = useDataSource() === "live";
+  useLiveConnection();
 
   useEffect(() => installTapHaptics(), []);
 
@@ -37,8 +40,8 @@ export default function AppShell() {
         <>
           <Outlet />
           <TimeKeys />
-          {/* On phones and tablets the time controls live in the bottom sheet header. */}
-          {isCompact ? null : <TimeBar />}
+          {/* On phones and tablets the time controls live in the bottom sheet header; a live source has no timeline. */}
+          {isCompact || isLive ? null : <TimeBar />}
         </>
       ) : null}
       <SearchDialog />

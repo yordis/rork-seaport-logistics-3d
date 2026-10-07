@@ -4,6 +4,7 @@ import type { Alert } from "@/data/types";
 import { cn } from "@/lib/utils";
 import { useSimTick, visibleAlerts } from "@/sim/simStore";
 import { usePort } from "@/state/PortProvider";
+import { usePortSnapshot } from "@/source/store";
 import { Panel } from "./primitives";
 
 const DOT: Record<Alert["severity"], string> = {
@@ -33,7 +34,8 @@ export function AlertsPanel() {
   useSimTick();
   const { open } = usePort();
   const [all, setAll] = useState<boolean>(false);
-  const alerts = visibleAlerts();
+  const port = usePortSnapshot();
+  const alerts = port.source === "live" ? port.alerts : visibleAlerts();
   const list = all ? alerts : alerts.slice(0, 3);
   return (
     <Panel className="w-full p-3" aria-label="Alerts">
@@ -47,11 +49,11 @@ export function AlertsPanel() {
       {list.length ? (
         <ul className="divide-y divide-hairline/70">
           {list.map((a) => (
-            <AlertRow key={a.id} alert={a} expanded={all} onOpen={() => open(a.target)} />
+            <AlertRow key={a.id} alert={a} expanded={all} onOpen={() => a.target && open(a.target)} />
           ))}
         </ul>
       ) : (
-        <p className="px-2 py-3 text-[12.5px] text-slate">No alerts at this point in time.</p>
+        <p className="px-2 py-3 text-[12.5px] text-slate">{port.source === "live" ? "No recent warning events." : "No alerts at this point in time."}</p>
       )}
     </Panel>
   );

@@ -2,11 +2,10 @@ import { Suspense, memo, useRef } from "react";
 import * as THREE from "three";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { AdaptiveDpr } from "@react-three/drei";
-import { VESSELS, QUAY_CRANES } from "@/data/port";
 import { COLORS } from "@/data/layout";
 import { Water } from "./Water";
 import { Terrain } from "./Terrain";
-import { BerthedVessel, ChannelTraffic, PortCallVessel } from "./Vessel";
+import { AnchoredVessel, AnchorageMarker, BerthedVessel, ChannelTraffic, PortCallVessel } from "./Vessel";
 import { portCall } from "@/sim/ais/portCalls";
 import { AisOverlay } from "./AisOverlay";
 import { QuayCrane } from "./QuayCrane";
@@ -18,6 +17,7 @@ import { updateNight } from "./nightLights";
 import { nightFx, nightMode } from "@/state/nightMode";
 import { boot } from "@/state/boot";
 import { SceneReady } from "./SceneReady";
+import { usePortSnapshot } from "@/source/store";
 
 const DAY = {
   bg: new THREE.Color(COLORS.canvas),
@@ -99,6 +99,8 @@ const Lights = memo(function Lights() {
 });
 
 function World() {
+  const port = usePortSnapshot();
+  const vessels = port.vessels.filter((v) => v.inScene);
   return (
     <>
       <Terrain />
@@ -106,13 +108,23 @@ function World() {
       <Water />
       <ChannelTraffic />
       <AisOverlay />
-      {VESSELS.filter((v) => v.inScene && !portCall(v.id)).map((v) => (
-        <BerthedVessel key={v.id} vessel={v} />
-      ))}
-      {VESSELS.filter((v) => v.inScene && portCall(v.id)).map((v) => (
-        <PortCallVessel key={v.id} vessel={v} />
-      ))}
-      {QUAY_CRANES.map((c, i) => (
+      {vessels
+        .filter((v) => v.berth > 0 && !portCall(v.id))
+        .map((v) => (
+          <BerthedVessel key={v.id} vessel={v} />
+        ))}
+      {vessels
+        .filter((v) => v.berth === 0 && v.anchorSlot !== undefined)
+        .map((v) => (
+          <AnchoredVessel key={v.id} vessel={v} />
+        ))}
+      {vessels
+        .filter((v) => portCall(v.id))
+        .map((v) => (
+          <PortCallVessel key={v.id} vessel={v} />
+        ))}
+      {port.anchorage ? <AnchorageMarker queue={port.anchorage} /> : null}
+      {port.cranes.map((c, i) => (
         <QuayCrane key={c.id} crane={c} index={i} />
       ))}
       <YardContainers />

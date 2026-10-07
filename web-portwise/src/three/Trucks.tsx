@@ -10,6 +10,7 @@ import { Part, Selectable, mat, unitBox } from "./parts";
 import { Chip3D } from "./Chip3D";
 import { Glow, LIGHT, Pool } from "./nightLights";
 import { usePort } from "@/state/PortProvider";
+import { usePortSnapshot } from "@/source/store";
 import { nightFx } from "@/state/nightMode";
 
 interface Leg {
@@ -26,10 +27,11 @@ interface Leg {
 interface Timeline {
   legs: Leg[];
   total: number;
+  parked: Leg | null;
 }
 
 /** Turns a looping route into timed legs (driving + dwelling). Hidden legs are fast-forwarded. */
-export function buildTimeline(route: RoutePoint[], speed: number): Timeline {
+export function buildTimeline(route: RoutePoint[], speed: number, once = false): Timeline {
   const legs: Leg[] = [];
   let t = 0;
   let load = false;
@@ -52,8 +54,12 @@ export function buildTimeline(route: RoutePoint[], speed: number): Timeline {
     legs.push({ kind: "move", t0: t, t1: t + dur, from: a.p, to: b.p, load, status, hidden: isHidden });
     t += dur;
   }
-  return { legs, total: t };
+  const start = route[0]?.p ?? [0, 0];
+  const parked: Leg | null = once ? { kind: "wait", t0: 0, t1: 0, from: start, to: start, load: false, status: "Completed", hidden: true } : null;
+  return { legs, total: t, parked };
 }
+
+const PARKED_LEG: Leg = { kind: "wait", t0: 0, t1: 0, from: [0, 0], to: [0, 0], load: false, status: "", hidden: true };
 
 export interface Pose {
   leg: Leg;
@@ -63,7 +69,14 @@ export interface Pose {
 
 /** Where a truck is on its looping timeline at absolute sim time `time`. */
 export function poseAt(tl: Timeline, offset: number, time: number, out: Pose): Pose {
-  const raw = (time + offset) % tl.total;
+  const elapsed = time + offset;
+  if (tl.parked && (elapsed < 0 || elapsed >= tl.total)) {
+    out.leg = tl.parked;
+    out.x = tl.parked.from[0];
+    out.z = tl.parked.from[1];
+    return out;
+  }
+  const raw = elapsed % tl.total;
   const t = raw < 0 ? raw + tl.total : raw;
   const leg = tl.legs.find((l) => t >= l.t0 && t < l.t1) ?? tl.legs[0];
   const k = leg.t1 > leg.t0 ? (t - leg.t0) / (leg.t1 - leg.t0) : 0;
@@ -77,9 +90,27 @@ interface TruckModelProps {
   cab: string;
   containerColor: string;
   itv: boolean;
+  ambient?: boolean;
 }
 
-export function TruckModel({ cab, containerColor, itv, boxRef }: TruckModelProps & { boxRef?: React.RefObject<THREE.Mesh> }) {
+/** Ambient trucks are plain grey tractors hauling an empty chassis: no cargo, no lights, no beacon. */
+function EmptyTractorModel({ itv }: { itv: boolean }) {
+  return (
+    <group>
+      <Part position={[1.9, 1.05, 0]} scale={[1.5, itv ? 1.2 : 1.7, 1.35]} color={COLORS.slate} />
+      <mesh geometry={unitBox} material={mat(COLORS.ink)} position={[2.66, itv ? 1.3 : 1.45, 0]} scale={[0.04, 0.5, 1.1]} />
+      <Part position={[-0.5, 0.55, 0]} scale={[3.6, 0.25, 1.2]} color="#2F343C" />
+      {[2.0, 0.2, -1.6].map((x) =>
+        [-0.6, 0.6].map((z) => (
+          <mesh key={`${x}${z}`} geometry={unitBox} material={mat("#1B1D22")} position={[x, 0.35, z]} scale={[0.7, 0.7, 0.25]} />
+        )),
+      )}
+    </group>
+  );
+}
+
+export function TruckModel({ cab, containerColor, itv, ambient, boxRef }: TruckModelProps & { boxRef?: React.RefObject<THREE.Mesh> }) {
+  if (ambient) return <EmptyTractorModel itv={itv} />;
   return (
     <group>
       <Part position={[1.9, 1.05, 0]} scale={[1.5, itv ? 1.2 : 1.7, 1.35]} color={cab} />
@@ -109,9 +140,13 @@ function TruckLabel({ truck }: { truck: TruckT }) {
   const shipmentFocus = selection?.kind === "shipment" && selection.id === truck.shipmentId;
   const gateHot = view === "overview" && truck.id === "XD3390H";
   if (!selected && !shipmentFocus && !gateHot) return null;
-  const text = shipmentFocus || selected ? `TRUCK ${truck.plate} · ${truck.gate ? `via ${truck.gate}` : truck.carrier}` : `${truck.plate} · Queued 18 min`;
+  const text = truck.ambient
+    ? `STEADY STATE · ${truck.plate}`
+    : shipmentFocus || selected
+      ? `TRUCK ${truck.plate} · ${truck.gate ? `via ${truck.gate}` : truck.carrier}`
+      : `${truck.plate} · Queued 18 min`;
   return (
-    <Chip3D position={[0, 4.6, 0]} tone={gateHot && !selected ? "amber" : "signal"} active={selected || shipmentFocus} onClick={() => open({ kind: "truck", id: truck.id })}>
+    <Chip3D position={[0, 4.6, 0]} tone={truck.ambient ? "ink" : gateHot && !selected ? "amber" : "signal"} active={selected || shipmentFocus} onClick={() => open({ kind: "truck", id: truck.id })}>
       <span className="font-mono">{text}</span>
     </Chip3D>
   );
@@ -120,7 +155,7 @@ function TruckLabel({ truck }: { truck: TruckT }) {
 function Truck({ truck }: { truck: TruckT }) {
   const group = useRef<THREE.Group>(null);
   const box = useRef<THREE.Mesh>(null);
-  const timeline = useMemo(() => buildTimeline(truck.route, truck.speed), [truck]);
+  const timeline = useMemo(() => buildTimeline(truck.route, truck.speed, truck.once), [truck]);
   const heading = useRef<number>(0);
   const pose = useRef<Pose>({ leg: timeline.legs[0], x: 0, z: 0 });
 
@@ -153,7 +188,7 @@ function Truck({ truck }: { truck: TruckT }) {
   return (
     <group ref={group}>
       <Selectable sel={{ kind: "truck", id: truck.id }}>
-        <TruckModel cab={truck.cab} containerColor={truck.containerColor} itv={truck.kind === "itv"} boxRef={box} />
+        <TruckModel cab={truck.cab} containerColor={truck.containerColor} itv={truck.kind === "itv"} ambient={truck.ambient} boxRef={box} />
       </Selectable>
       <TruckLabel truck={truck} />
     </group>
@@ -228,15 +263,17 @@ function trailMaterial(color: string, selColor: string, selBoost: number, additi
  */
 function TruckTrails() {
   const { selection } = usePort();
+  const port = usePortSnapshot();
+  const trucks = port.trucks ?? TRUCKS;
   const selectedId = useMemo<string | null>(() => {
     if (selection?.kind === "truck") return selection.id;
-    if (selection?.kind === "shipment") return TRUCKS.find((t) => t.shipmentId === selection.id)?.id ?? null;
+    if (selection?.kind === "shipment") return trucks.find((t) => t.shipmentId === selection.id)?.id ?? null;
     return null;
-  }, [selection]);
+  }, [selection, trucks]);
   const selRef = useRef<string | null>(selectedId);
   selRef.current = selectedId;
 
-  const tracks = useMemo(() => TRUCKS.map((t) => ({ id: t.id, offset: t.offset, tl: buildTimeline(t.route, t.speed) })), []);
+  const tracks = useMemo(() => trucks.map((t) => ({ id: t.id, offset: t.offset, tl: buildTimeline(t.route, t.speed, t.once) })), [trucks]);
 
   const { geometry, dayMat, nightMat } = useMemo(() => {
     const per = (TRAIL_SEGS + 1) * 2;
@@ -273,7 +310,7 @@ function TruckTrails() {
     [geometry, dayMat, nightMat],
   );
 
-  const scratch = useMemo(() => ({ pose: { leg: tracks[0].tl.legs[0], x: 0, z: 0 } as Pose, xs: new Float32Array(TRAIL_SEGS + 1), zs: new Float32Array(TRAIL_SEGS + 1) }), [tracks]);
+  const scratch = useMemo(() => ({ pose: { leg: tracks[0]?.tl.legs[0] ?? PARKED_LEG, x: 0, z: 0 } as Pose, xs: new Float32Array(TRAIL_SEGS + 1), zs: new Float32Array(TRAIL_SEGS + 1) }), [tracks]);
 
   useFrame(() => {
     const mix = nightFx.mix;
@@ -357,7 +394,9 @@ function TruckTrails() {
 /** Animated dashed route for the shipment's truck. */
 function ShipmentRoute() {
   const { selection } = usePort();
-  const truck = selection?.kind === "shipment" ? TRUCKS.find((t) => t.shipmentId === selection.id) : undefined;
+  const port = usePortSnapshot();
+  const trucks = port.trucks ?? TRUCKS;
+  const truck = selection?.kind === "shipment" ? trucks.find((t) => t.shipmentId === selection.id) : undefined;
   const points = useMemo(() => {
     if (!truck) return [];
     return truck.route.filter((p) => !p.hidden).map((p) => new THREE.Vector3(p.p[0], 0.25, p.p[1]));
@@ -376,10 +415,12 @@ function ShipmentRoute() {
 }
 
 export function Trucks() {
+  const port = usePortSnapshot();
+  const trucks = port.trucks ?? TRUCKS;
   return (
     <group>
-      <TruckTrails />
-      {TRUCKS.map((t) => (
+      {trucks.length > 0 ? <TruckTrails /> : null}
+      {trucks.map((t) => (
         <Truck key={t.id} truck={t} />
       ))}
       <ShipmentRoute />

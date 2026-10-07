@@ -7,7 +7,10 @@ import type { BerthBooking } from "@/data/types";
 import { cn } from "@/lib/utils";
 import { fmtClock, sim, simNowHours, simNowSec, useSimTick } from "@/sim/simStore";
 import { usePort } from "@/state/PortProvider";
-import { Panel } from "./primitives";
+import { usePortSnapshot } from "@/source/store";
+import { craneStatus } from "@/source/cranes";
+import type { Tone } from "./primitives";
+import { Panel, ProgressBar, StatusChip } from "./primitives";
 
 const HOURS = Array.from({ length: 13 }, (_, i) => i * 2);
 const pct = (h: number): string => `${(Math.max(0, Math.min(24, h)) / 24) * 100}%`;
@@ -62,7 +65,84 @@ function Bar({ b, now, highlight }: { b: BerthBooking; now: number; highlight: b
   );
 }
 
-export function BerthSchedule({ focusBerth, title = "Today's berth plan" }: { focusBerth?: number; title?: string }) {
+interface BerthScheduleProps {
+  focusBerth?: number;
+  title?: string;
+}
+
+export function BerthSchedule(props: BerthScheduleProps) {
+  const port = usePortSnapshot();
+  return port.source === "live" ? <BerthBoard focusBerth={props.focusBerth} /> : <SimBerthSchedule {...props} />;
+}
+
+const BOARD_MAX_COLS = 6;
+
+/** Fewest rows of at most six, balanced so the last row is never left mostly empty. */
+const boardColumns = (count: number): number => (count <= 0 ? 1 : Math.ceil(count / Math.ceil(count / BOARD_MAX_COLS)));
+
+/** Berths as they stand right now, for sources without a schedule. */
+function BerthBoard({ focusBerth }: { focusBerth?: number }) {
+  useSimTick();
+  const port = usePortSnapshot();
+  const { open, setHovered, selection } = usePort();
+  const anchored = port.vessels.filter((v) => v.berth === 0);
+  return (
+    <Panel className="pointer-events-auto px-3.5 pb-3 pt-3 sm:px-4 lg:px-5" aria-label="Berths">
+      <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+        <h2 className="text-[16px] font-bold text-ink">Berths now</h2>
+        <p className="text-[12.5px] text-slate">
+          {port.vessels.length - anchored.length} alongside · {anchored.length} at anchor
+          {port.anchorage ? ` · ${port.anchorage.label}` : ""}
+        </p>
+        <Link to="/vessels" className="ml-auto flex items-center gap-1 text-[12.5px] font-semibold text-harbor hover:underline">
+          All vessels <ArrowRight className="h-3.5 w-3.5" />
+        </Link>
+      </div>
+      {port.berths.length ? null : <p className="mt-2 text-[12.5px] text-slate">No berths yet. Waiting for nodes from the data source.</p>}
+      <ul
+        className="mt-2 grid grid-cols-1 gap-1.5 sm:grid-cols-2 xl:grid-cols-[repeat(var(--cols),minmax(0,1fr))]"
+        style={{ "--cols": boardColumns(port.berths.length) } as React.CSSProperties}
+      >
+        {port.berths.map(({ n: berth }) => {
+          const v = port.vessels.find((x) => x.berth === berth);
+          const crane = port.cranes.find((c) => c.berth === berth);
+          const working = crane ? craneStatus(crane, 0).state === "active" : false;
+          const selected = !!v && selection?.kind === "vessel" && selection.id === v.id;
+          return (
+            <li key={berth}>
+              <button
+                type="button"
+                disabled={!v}
+                onClick={() => v && open({ kind: "vessel", id: v.id })}
+                onMouseEnter={() => v && setHovered({ kind: "vessel", id: v.id })}
+                onMouseLeave={() => setHovered(null)}
+                className={cn(
+                  "flex w-full flex-col gap-1.5 rounded-[10px] border border-hairline px-3 py-2 text-left transition-colors hover:bg-sand/70 disabled:pointer-events-none",
+                  (focusBerth === berth || selected) && "border-signal bg-signal-soft/50",
+                )}
+              >
+                <span className="flex items-center gap-2">
+                  <span className="text-[11.5px] font-semibold text-slate">Berth {berth}</span>
+                  {v?.meta ? (
+                    <StatusChip tone={v.meta.tone as Tone} className="ml-auto">
+                      {working ? "Scheduling" : v.meta.headline}
+                    </StatusChip>
+                  ) : (
+                    <span className="ml-auto text-[11.5px] text-slate">Empty</span>
+                  )}
+                </span>
+                <span className="truncate font-mono text-[12.5px] font-semibold text-ink">{v?.name ?? "No vessel"}</span>
+                {v?.meta ? <ProgressBar value={v.meta.fill} tone={v.meta.tone as Tone} live={working} height="h-1.5" /> : null}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </Panel>
+  );
+}
+
+function SimBerthSchedule({ focusBerth, title = "Today's berth plan" }: BerthScheduleProps) {
   useSimTick();
   const now = simNowHours();
   const { selection } = usePort();

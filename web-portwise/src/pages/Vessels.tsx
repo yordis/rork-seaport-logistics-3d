@@ -6,7 +6,8 @@ import { BerthSchedule } from "@/components/hud/BerthSchedule";
 import { PortMovements } from "@/components/hud/PortMovements";
 import { Panel, ProgressBar, StatusChip } from "@/components/hud/primitives";
 import type { Tone } from "@/components/hud/primitives";
-import { CARRIER_NAME, VESSELS } from "@/data/port";
+import { CARRIER_NAME } from "@/data/port";
+import { usePortSnapshot } from "@/source/store";
 import type { Vessel } from "@/data/types";
 import { sim, useSimTick } from "@/sim/simStore";
 import { usePort } from "@/state/PortProvider";
@@ -15,6 +16,7 @@ export type VesselGroup = "berth" | "moving" | "anchored" | "expected" | "sailed
 
 /** Which list section a vessel belongs in right now (from its AIS-driven port call, if any). */
 export function vesselGroup(v: Vessel): VesselGroup {
+  if (v.meta) return v.berth ? "berth" : "anchored";
   const c = sim.calls[v.id];
   if (!c) return v.status === "scheduled" ? "expected" : "berth";
   if (c.phase === "alongside") return "berth";
@@ -25,6 +27,7 @@ export function vesselGroup(v: Vessel): VesselGroup {
 
 /** Live status of a vessel derived from simulation state. */
 export function vesselLive(v: Vessel): { label: string; tone: Tone; progress: number; loading: boolean; active: boolean } {
+  if (v.meta) return { label: v.meta.headline, tone: v.meta.tone, progress: v.meta.fill, loading: true, active: true };
   const live = sim.vessels[v.id];
   const c = sim.calls[v.id];
   if (c && c.phase !== "alongside") {
@@ -64,10 +67,16 @@ function VesselRow({ v }: { v: Vessel }) {
         <span className="min-w-0 flex-1">
           <span className="flex items-center justify-between gap-2">
             <span className="truncate text-[13.5px] font-bold text-ink">{v.name}</span>
-            <span className="shrink-0 whitespace-nowrap font-mono text-[11.5px] text-slate tnum">B{v.berth}</span>
+            <span className="shrink-0 whitespace-nowrap font-mono text-[11.5px] text-slate tnum">{v.berth ? `B${v.berth}` : "ANCH"}</span>
           </span>
           <span className="mt-0.5 block truncate text-[12px] text-slate">
-            {v.line} · ETA <span className="font-mono">{v.eta}</span> · ETD <span className="font-mono">{v.etd}</span>
+            {v.meta ? (
+              v.meta.details.slice(2, 4).map((d) => `${d.label} ${d.value}`).join(" · ")
+            ) : (
+              <>
+                {v.line} · ETA <span className="font-mono">{v.eta}</span> · ETD <span className="font-mono">{v.etd}</span>
+              </>
+            )}
           </span>
           <span className="mt-1.5 flex items-center gap-2">
             <StatusChip tone={s.tone} pulse={g === "moving"}>
@@ -85,6 +94,8 @@ function VesselRow({ v }: { v: Vessel }) {
 export default function Vessels() {
   useSimTick();
   const { setPageSelection, setView } = usePort();
+  const port = usePortSnapshot();
+  const isLive = port.source === "live";
   useEffect(() => {
     setPageSelection(null);
     setView("vessels");
@@ -97,18 +108,18 @@ export default function Vessels() {
     ["expected", "Expected today"],
     ["sailed", "Sailed"],
   ];
-  const byGroup = (g: VesselGroup): Vessel[] => VESSELS.filter((v) => vesselGroup(v) === g);
+  const byGroup = (g: VesselGroup): Vessel[] => port.vessels.filter((v) => vesselGroup(v) === g);
   const atBerth = byGroup("berth").length;
-  const coming = VESSELS.length - atBerth - byGroup("sailed").length;
+  const coming = port.vessels.length - atBerth - byGroup("sailed").length;
 
   return (
     <HudLayout
       left={
         <Panel className="p-3" aria-label="Vessel list">
           <div className="px-2 pb-2 pt-1">
-            <h1 className="text-[17px] font-bold text-ink">{CARRIER_NAME} at the terminal</h1>
+            <h1 className="text-[17px] font-bold text-ink">{isLive ? "Cluster nodes" : `${CARRIER_NAME} at the terminal`}</h1>
             <p className="text-[12.5px] text-slate">
-              {atBerth} at berth · {coming} on the move or due
+              {isLive ? `${atBerth} at berth · ${coming} at anchor` : `${atBerth} at berth · ${coming} on the move or due`}
             </p>
           </div>
           {groups.map(([g, label]) => {
@@ -130,7 +141,7 @@ export default function Vessels() {
           })}
         </Panel>
       }
-      right={<PortMovements />}
+      right={isLive ? undefined : <PortMovements />}
       bottom={<BerthSchedule />}
     />
   );

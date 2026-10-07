@@ -2,7 +2,6 @@ import { memo, useLayoutEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { Text } from "@react-three/drei";
 import {
-  BERTH_SPACING,
   BLOCK_HALF_X,
   BLOCK_HALF_Z,
   COLORS,
@@ -16,9 +15,10 @@ import {
   ROAD_END_X,
   ROW_ROADS_Z,
   SEA_RAIL_Z,
-  berthX,
+  quayExtent,
 } from "@/data/layout";
-import { BERTH_COUNT, PORT_NAME, YARD_BLOCKS } from "@/data/port";
+import { usePortSnapshot } from "@/source/store";
+import { PORT_NAME, YARD_BLOCKS } from "@/data/port";
 import { mat, unitBox, unitCyl } from "./parts";
 import { mulberry32 } from "@/data/containers";
 import { Glow, LIGHT, LightCone, Pool, litMat } from "./nightLights";
@@ -127,11 +127,13 @@ function BlockPads() {
 }
 
 function Quay() {
+  const { berths } = usePortSnapshot();
   const fenders = useMemo(() => {
+    const [lo, hi] = quayExtent(berths);
     const out: number[] = [];
-    for (let x = QUAY_MIN_X + 3; x < QUAY_MAX_X; x += 6) out.push(x);
+    for (let x = QUAY_MIN_X + 3; x < QUAY_MAX_X; x += 6) if (x >= lo && x < hi) out.push(x);
     return out;
-  }, []);
+  }, [berths]);
   return (
     <group>
       <mesh geometry={unitBox} material={mat(COLORS.quayWall)} position={[0, -1.6, QUAY_Z - 0.3]} scale={[1800, 3.2, 0.6]} receiveShadow />
@@ -148,13 +150,13 @@ function Quay() {
         .map((x) => (
           <mesh key={`b${x}`} geometry={unitCyl} material={mat(COLORS.ink)} position={[x + 3, 0.35, QUAY_Z - 0.9]} scale={[0.45, 0.7, 0.45]} castShadow />
         ))}
-      {Array.from({ length: BERTH_COUNT }, (_, i) => i + 1).map((n) => (
-        <group key={n}>
-          <Text font={FONT_URL} fontSize={1.5} color="#8C836F" position={[berthX(n) - BERTH_SPACING / 2 + 3, 0.06, 18.9]} rotation={[-Math.PI / 2, 0, 0]} anchorX="left">
-            {`BERTH ${n}`}
+      {berths.map((b) => (
+        <group key={b.n}>
+          <Text font={FONT_URL} fontSize={1.5} color="#8C836F" position={[b.x - b.length / 2 + 3, 0.06, 18.9]} rotation={[-Math.PI / 2, 0, 0]} anchorX="left">
+            {`BERTH ${b.n}`}
           </Text>
-          {n > 1 ? (
-            <mesh geometry={unitBox} material={mat(COLORS.amber)} position={[berthX(n) - BERTH_SPACING / 2, 0.05, 18.9]} scale={[0.25, 0.06, 1.6]} />
+          {b.n > 1 ? (
+            <mesh geometry={unitBox} material={mat(COLORS.amber)} position={[b.x - b.length / 2, 0.05, 18.9]} scale={[0.25, 0.06, 1.6]} />
           ) : null}
         </group>
       ))}

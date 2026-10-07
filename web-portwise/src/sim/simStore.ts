@@ -22,7 +22,13 @@ const BOOM_SWING_SEC = 6;
 
 const nowMs = (): number => (typeof performance !== "undefined" ? performance.now() : Date.now());
 const realStart = nowMs();
+const epochAtStart = Date.now();
 const realT = (): number => (nowMs() - realStart) / 1000;
+
+/** Converts a wall-clock epoch (ms) into the same number space `simT()` returns while live. */
+export function epochToSimT(epochMs: number): number {
+  return (epochMs - epochAtStart) / 1000;
+}
 
 interface ClockState {
   live: boolean;
@@ -431,7 +437,7 @@ export interface TimelineEvent {
 const SEVERITY_TONE: Record<Alert["severity"], TimelineEvent["tone"]> = { danger: "brick", warning: "amber", info: "harbor", success: "moss" };
 
 export const TIMELINE_EVENTS: TimelineEvent[] = [
-  ...ALERTS.filter((a) => clockToT(a.time) >= MIN_T).map((a) => ({ id: a.id, t: clockToT(a.time), label: a.title, tone: SEVERITY_TONE[a.severity], target: a.target })),
+  ...ALERTS.filter((a) => a.target && clockToT(a.time) >= MIN_T).map((a) => ({ id: a.id, t: clockToT(a.time), label: a.title, tone: SEVERITY_TONE[a.severity], target: a.target as Selection })),
   ...PORT_EVENTS.filter((ev) => ev.marker && ev.t >= MIN_T).map((ev) => ({ id: `ev-${ev.id}`, t: ev.t, label: ev.marker ?? "", tone: ev.tone, target: { kind: "vessel" as const, id: ev.vesselId } })),
 ].sort((a, b) => a.t - b.t);
 

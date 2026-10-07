@@ -7,9 +7,17 @@ import { defineConfig } from "vite";
 export default defineConfig(({ mode }) => ({
   server: {
     host: "::",
-    port: 8080,
+    port: Number(process.env.PORTWISE_PORT ?? 8080),
+    strictPort: !!process.env.PORTWISE_PORT,
     hmr: {
       overlay: false,
+    },
+    proxy: {
+      "/k8s": {
+        target: process.env.K8S_PROXY_URL ?? "http://127.0.0.1:8001",
+        changeOrigin: true,
+        rewrite: (p) => p.replace(/^\/k8s/, ""),
+      },
     },
   },
   plugins: [react()],

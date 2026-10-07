@@ -1,8 +1,16 @@
 import { ArrowUp, Boxes, Clock3, Ship } from "lucide-react";
 import type { ReactNode } from "react";
-import { YARD_BLOCKS } from "@/data/port";
 import { liveCraneRate, sim, useSimTick } from "@/sim/simStore";
+import { usePortSnapshot } from "@/source/store";
+import type { KpiIcon } from "@/source/model";
 import { CraneGlyph, Panel } from "./primitives";
+
+const ICON: Record<KpiIcon, ReactNode> = {
+  vessel: <Ship className="h-5 w-5" />,
+  crane: <CraneGlyph className="h-6 w-6" />,
+  clock: <Clock3 className="h-5 w-5" />,
+  yard: <Boxes className="h-5 w-5" />,
+};
 
 const nf = new Intl.NumberFormat("en-US");
 const nf1 = new Intl.NumberFormat("en-US", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
@@ -32,7 +40,17 @@ function Kpi({ icon, label, value, unit, delta, delay }: { icon: ReactNode; labe
 
 export function KpiStack() {
   useSimTick();
-  const fill = YARD_BLOCKS.reduce((s, b) => s + b.fill, 0) / YARD_BLOCKS.length;
+  const port = usePortSnapshot();
+  if (port.kpis) {
+    return (
+      <div className="grid grid-cols-2 gap-2.5 lg:flex lg:flex-col lg:gap-3" role="group" aria-label="Cluster KPIs">
+        {port.kpis.map((k, i) => (
+          <Kpi key={k.id} icon={ICON[k.icon]} label={k.label} value={k.value} unit={k.unit} delay={i * 60} />
+        ))}
+      </div>
+    );
+  }
+  const fill = port.blocks.reduce((s, b) => s + b.fill, 0) / port.blocks.length;
   return (
     <div className="grid grid-cols-2 gap-2.5 lg:flex lg:flex-col lg:gap-3" role="group" aria-label="Terminal KPIs">
       <Kpi icon={<Ship className="h-5 w-5" />} label="TEU today" value={nf.format(sim.teuToday)} delta="6%" delay={0} />

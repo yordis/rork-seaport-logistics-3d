@@ -1,8 +1,9 @@
 import { Link } from "react-router-dom";
 import { Truck as TruckIcon, X } from "lucide-react";
-import { truckById } from "@/data/port";
+import { TRUCKS } from "@/data/port";
 import { sim, simElapsedMin, useSimTick } from "@/sim/simStore";
 import { usePort } from "@/state/PortProvider";
+import { findShipment, usePortSnapshot } from "@/source/store";
 import { DefRow, IconButton, Panel, PanelHeader, StatusChip } from "./primitives";
 import type { Tone } from "./primitives";
 
@@ -14,9 +15,10 @@ export const truckStatusTone = (status: string): Tone => {
 };
 
 export function TruckCard({ id }: { id: string }) {
+  const port = usePortSnapshot();
   useSimTick();
   const { closeOverride } = usePort();
-  const truck = truckById(id);
+  const truck = (port.trucks ?? TRUCKS).find((t) => t.id === id);
   if (!truck) return null;
   const status = sim.truckStatus[truck.id] ?? "—";
   const minutes = Math.max(0, Math.round((truck.baseWait ?? 1) + simElapsedMin()));
@@ -24,7 +26,17 @@ export function TruckCard({ id }: { id: string }) {
   return (
     <Panel className="w-full p-4" aria-label={`Truck ${truck.plate}`}>
       <PanelHeader
-        eyebrow={truck.kind === "itv" ? "Terminal tractor" : truck.kind === "drayage" ? "Drayage truck · logistics district" : `External truck · ${truck.gate}`}
+        eyebrow={
+          truck.ambient
+            ? `Steady state · ${truck.trip ?? truck.plate}`
+            : port.source === "live" && truck.trip
+              ? truck.trip
+            : truck.kind === "itv"
+              ? "Terminal tractor"
+            : truck.kind === "drayage"
+              ? "Drayage truck · logistics district"
+                : `External truck · ${truck.gate}`
+        }
         title={<span className="font-mono">{truck.plate}</span>}
         icon={<TruckIcon className="h-5 w-5" />}
         right={
@@ -37,6 +49,11 @@ export function TruckCard({ id }: { id: string }) {
         <StatusChip tone={truckStatusTone(status)}>{status}</StatusChip>
         <span className="text-[12px] text-slate">Camera following</span>
       </div>
+      {truck.ambient ? (
+        <p className="mt-3 pl-[52px] text-[12px] leading-snug text-slate">
+          Not a cluster event. This empty tractor loops between a {port.vocabulary.container.toLowerCase()} group's block and the {port.vocabulary.vessel.toLowerCase()} running it, so the yard shows where things live while nothing is happening.
+        </p>
+      ) : null}
       <dl className="mt-4">
         <DefRow label="Haulier" mono={false}>
           {truck.carrier}
@@ -46,7 +63,7 @@ export function TruckCard({ id }: { id: string }) {
         </DefRow>
         {truck.trip ? (
           <DefRow label="Run" mono={false}>
-            {truck.facilityId ? (
+            {truck.facilityId && port.logistics ? (
               <Link to={`/logistics/${truck.facilityId}`} className="text-harbor underline-offset-2 hover:underline">
                 {truck.trip}
               </Link>
@@ -58,7 +75,7 @@ export function TruckCard({ id }: { id: string }) {
         {truck.gate ? <DefRow label="Gate lane" mono={false}>{truck.gate}</DefRow> : null}
         {truck.kind === "drayage" ? null : <DefRow label="Time in terminal">{minutes} min</DefRow>}
         <DefRow label="Type">{truck.kind === "itv" ? "ITV tractor" : "Tractor + 40' chassis"}</DefRow>
-        {truck.shipmentId ? (
+        {truck.shipmentId && findShipment(truck.shipmentId, port) ? (
           <DefRow label="Shipment">
             <Link to={`/shipments/${truck.shipmentId}`} className="text-harbor underline-offset-2 hover:underline">
               #{truck.shipmentId}

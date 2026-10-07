@@ -3,31 +3,35 @@ import * as THREE from "three";
 import { useFrame } from "@react-three/fiber";
 import type { ThreeEvent } from "@react-three/fiber";
 import { Outlines } from "@react-three/drei";
-import { CONTAINERS, containerById } from "@/data/containers";
 import { YARD_BLOCKS, blockById } from "@/data/port";
-import { BLOCK_HALF_X, BLOCK_HALF_Z, COLORS, CONTAINER_COLORS } from "@/data/layout";
+import { BLOCK_BAYS, BLOCK_HALF_X, BLOCK_HALF_Z, BLOCK_ROWS, BLOCK_TIERS, COLORS, CONTAINER_COLORS } from "@/data/layout";
+import { findContainer, usePortSnapshot } from "@/source/store";
 import { selKey, usePort } from "@/state/PortProvider";
 import { sceneRegistry, simT } from "@/sim/simStore";
 import { haptic } from "@/lib/haptics";
-import { Part, Selectable, mat, unitBox } from "./parts";
+import { Part, Selectable, SelectedContainer, mat, unitBox } from "./parts";
 import { Chip3D } from "./Chip3D";
 import type { ChipTone } from "./Chip3D";
 import { Glow, LIGHT } from "./nightLights";
 
 const MUTED = new THREE.Color("#D8D2C4");
+const MAX_CONTAINERS = YARD_BLOCKS.length * BLOCK_BAYS * BLOCK_ROWS * BLOCK_TIERS;
 
 export const fillTone = (fill: number): ChipTone => (fill >= 0.85 ? "brick" : fill >= 0.6 ? "amber" : "moss");
 
 /** All yard containers as a single instanced mesh; per-instance picking opens the container. */
 export function YardContainers() {
   const { yardFilter, selection, hovered, setHovered, open, view } = usePort();
+  const port = usePortSnapshot();
+  const containers = port.containers;
   const ref = useRef<THREE.InstancedMesh>(null);
 
   useLayoutEffect(() => {
     const m = ref.current;
     if (!m) return;
     const o = new THREE.Object3D();
-    CONTAINERS.forEach((c, i) => {
+    m.count = Math.min(containers.length, MAX_CONTAINERS);
+    containers.slice(0, MAX_CONTAINERS).forEach((c, i) => {
       o.position.set(c.x, c.y, c.z);
       o.scale.set(3.0, 1.25, 1.3);
       o.updateMatrix();
@@ -35,24 +39,24 @@ export function YardContainers() {
     });
     m.instanceMatrix.needsUpdate = true;
     m.computeBoundingSphere();
-  }, []);
+  }, [containers]);
 
   useLayoutEffect(() => {
     const m = ref.current;
     if (!m) return;
     const col = new THREE.Color();
-    CONTAINERS.forEach((c, i) => {
+    containers.slice(0, MAX_CONTAINERS).forEach((c, i) => {
       const match = view !== "yard" || yardFilter === "all" || c.category === yardFilter;
       col.set(c.color);
       m.setColorAt(i, match ? col : MUTED);
     });
     if (m.instanceColor) m.instanceColor.needsUpdate = true;
-  }, [yardFilter, view]);
+  }, [yardFilter, view, containers]);
 
   const onMove = (e: ThreeEvent<PointerEvent>) => {
     e.stopPropagation();
     if (e.instanceId === undefined) return;
-    const c = CONTAINERS[e.instanceId];
+    const c = containers[e.instanceId];
     if (c && selKey(hovered) !== `container:${c.id}`) setHovered({ kind: "container", id: c.id });
     document.body.style.cursor = "pointer";
   };
@@ -63,18 +67,18 @@ export function YardContainers() {
   const onClick = (e: ThreeEvent<MouseEvent>) => {
     e.stopPropagation();
     if (e.delta > 6 || e.instanceId === undefined) return;
-    const c = CONTAINERS[e.instanceId];
+    const c = containers[e.instanceId];
     if (!c) return;
     haptic("selection");
     open({ kind: "container", id: c.id });
   };
 
-  const selected = selection?.kind === "container" ? containerById(selection.id) : undefined;
-  const hover = hovered?.kind === "container" ? containerById(hovered.id) : undefined;
+  const selected = selection?.kind === "container" ? findContainer(selection.id, port) : undefined;
+  const hover = hovered?.kind === "container" ? findContainer(hovered.id, port) : undefined;
 
   return (
     <group>
-      <instancedMesh ref={ref} args={[undefined, undefined, CONTAINERS.length]} geometry={unitBox} castShadow receiveShadow onPointerMove={onMove} onPointerOut={onOut} onClick={onClick}>
+      <instancedMesh ref={ref} args={[undefined, undefined, MAX_CONTAINERS]} geometry={unitBox} castShadow receiveShadow onPointerMove={onMove} onPointerOut={onOut} onClick={onClick}>
         <meshStandardMaterial roughness={0.82} />
       </instancedMesh>
       {hover && hover.id !== selected?.id ? (
@@ -88,33 +92,16 @@ export function YardContainers() {
   );
 }
 
-function SelectedContainer({ x, y, z, color }: { x: number; y: number; z: number; color: string }) {
-  const ref = useRef<THREE.Group>(null);
-  useFrame(({ clock }) => {
-    if (ref.current) ref.current.position.y = y + 0.35 + Math.sin(clock.elapsedTime * 2.4) * 0.12;
-  });
-  return (
-    <group ref={ref} position={[x, y + 0.35, z]}>
-      <mesh geometry={unitBox} material={mat(color, { emissive: COLORS.signal, glow: 0.3 })} scale={[3.06, 1.3, 1.36]} castShadow raycast={() => null}>
-        <Outlines thickness={0.07} color={COLORS.signal} />
-      </mesh>
-      <mesh position={[0, 2.2, 0]} raycast={() => null}>
-        <coneGeometry args={[0.45, 0.9, 4]} />
-        <meshStandardMaterial color={COLORS.signal} emissive={COLORS.signal} emissiveIntensity={0.5} />
-      </mesh>
-    </group>
-  );
-}
-
 /** Invisible pads that make each block clickable, outlined when hovered/selected, plus occupancy chips. */
 export function YardBlocks() {
   const { selection, hovered, view, open, yardFilter } = usePort();
+  const port = usePortSnapshot();
   const selectedBlock =
-    selection?.kind === "block" ? selection.id : selection?.kind === "container" ? containerById(selection.id)?.blockId : undefined;
+    selection?.kind === "block" ? selection.id : selection?.kind === "container" ? findContainer(selection.id, port)?.blockId : undefined;
 
   return (
     <group>
-      {YARD_BLOCKS.map((b) => {
+      {port.blocks.map((b) => {
         const isSel = selectedBlock === b.id;
         const isHover = hovered?.kind === "block" && hovered.id === b.id;
         const visibleChip = view === "yard" && (yardFilter === "all" || b.category === yardFilter);
@@ -146,7 +133,7 @@ export function YardBlocks() {
             {visibleChip || isSel ? (
               <Chip3D position={[0, 7.4, 0]} tone={fillTone(b.fill)} active={isSel} onClick={() => open({ kind: "block", id: b.id })}>
                 <span className="font-mono">
-                  {b.id} {Math.round(b.fill * 100)}%
+                  {b.meta ? `${b.id} · ${b.meta.headline}` : b.id} {Math.round(b.fill * 100)}%
                 </span>
               </Chip3D>
             ) : null}

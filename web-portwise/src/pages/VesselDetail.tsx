@@ -6,24 +6,26 @@ import { BerthSchedule } from "@/components/hud/BerthSchedule";
 import { AisPanel } from "@/components/hud/AisPanel";
 import { hasAis } from "@/sim/ais/tracker";
 import { DefRow, IconButton, Panel, ProgressBar, StatusChip } from "@/components/hud/primitives";
-import { QUAY_CRANES, vesselById } from "@/data/port";
-import { containersForVessel } from "@/data/containers";
+import { MetaRows } from "@/components/hud/MetaRows";
 import { cn } from "@/lib/utils";
-import { craneStatusAt, fmtClock, sim, simT, useSimTick } from "@/sim/simStore";
+import { fmtClock, sim, simT, useSimTick } from "@/sim/simStore";
+import { craneStatus, isCraneActive } from "@/source/cranes";
+import { containersOn, findVessel, usePortSnapshot } from "@/source/store";
 import { usePort } from "@/state/PortProvider";
 import { vesselLive } from "./Vessels";
+import type { EntityMeta, Vessel } from "@/data/types";
 
 type Tab = "overview" | "ais" | "containers" | "activity";
 const nf = new Intl.NumberFormat("en-US");
 
 function CraneRows({ vesselId }: { vesselId: string }) {
   const { open } = usePort();
-  const cranes = QUAY_CRANES.filter((c) => c.vesselId === vesselId);
+  const cranes = usePortSnapshot().cranes.filter((c) => c.vesselId === vesselId);
   if (!cranes.length) return <p className="py-2 text-[12.5px] text-slate">No cranes assigned yet.</p>;
   return (
     <ul>
       {cranes.map((c) => {
-        const st = craneStatusAt(c, simT());
+        const st = craneStatus(c, simT());
         const active = st.state === "active";
         const paused = st.state === "paused";
         return (
@@ -34,11 +36,11 @@ function CraneRows({ vesselId }: { vesselId: string }) {
               {paused ? (
                 <StatusChip tone="brick">{st.reason}</StatusChip>
               ) : active ? (
-                <StatusChip tone="moss">{c.mode === "load" ? "Loading" : "Discharging"}</StatusChip>
+                <StatusChip tone="moss">{c.activity ? "Scheduling" : c.mode === "load" ? "Loading" : "Discharging"}</StatusChip>
               ) : (
                 <StatusChip tone="amber">{st.reason}</StatusChip>
               )}
-              <span className="ml-auto font-mono text-[12.5px] font-semibold text-ink tnum">{active ? `${c.movesPerHour || 28} moves/h` : "–"}</span>
+              <span className="ml-auto font-mono text-[12.5px] font-semibold text-ink tnum">{c.activity ? `${c.activity.moves} pods` : active ? `${c.movesPerHour || 28} moves/h` : "-"}</span>
             </button>
           </li>
         );
@@ -49,11 +51,13 @@ function CraneRows({ vesselId }: { vesselId: string }) {
 
 function ContainerList({ vesselId }: { vesselId: string }) {
   const { open } = usePort();
-  const list = useMemo(() => containersForVessel(vesselId), [vesselId]);
-  if (!list.length) return <p className="py-3 text-[12.5px] text-slate">No containers from this vessel in the yard yet.</p>;
+  const port = usePortSnapshot();
+  const isLive = port.source === "live";
+  const list = useMemo(() => containersOn(vesselId, port), [vesselId, port]);
+  if (!list.length) return <p className="py-3 text-[12.5px] text-slate">{isLive ? "No pods from this node in the yard." : "No containers from this vessel in the yard yet."}</p>;
   return (
     <div>
-      <p className="pb-2 text-[12px] text-slate">{list.length} containers from this vessel are in the yard</p>
+      <p className="pb-2 text-[12px] text-slate">{list.length} {isLive ? "pods on this node are in the yard" : "containers from this vessel are in the yard"}</p>
       <ul className="divide-y divide-hairline/70">
         {list.slice(0, 40).map((c) => (
           <li key={c.id}>
@@ -103,7 +107,8 @@ function WindWidget() {
 export default function VesselDetail() {
   useSimTick();
   const { id = "" } = useParams();
-  const vessel = vesselById(id);
+  const port = usePortSnapshot();
+  const vessel = findVessel(id, port);
   const { setPageSelection, setView, goHome } = usePort();
   const [tab, setTab] = useState<Tab>("overview");
 
@@ -113,13 +118,14 @@ export default function VesselDetail() {
   }, [vessel, setPageSelection, setView]);
 
   if (!vessel) return <Navigate to="/vessels" replace />;
+  if (vessel.meta) return <LiveVesselDetail vessel={vessel} meta={vessel.meta} tab={tab === "containers" ? "containers" : "overview"} setTab={setTab} />;
 
   const s = vesselLive(vessel);
-  const live = sim.vessels[vessel.id];
+  const live = sim.vessels[vessel.id] ?? { discharged: 0, loaded: 0 };
   const call = sim.calls[vessel.id];
   const dPct = live.discharged / vessel.dischargeTotal;
   const lPct = live.loaded / vessel.loadTotal;
-  const rate = QUAY_CRANES.filter((c) => c.vesselId === vessel.id && sim.craneActive[c.id]).reduce((a, c) => a + (c.movesPerHour || 28), 0);
+  const rate = port.cranes.filter((c) => c.vesselId === vessel.id && isCraneActive(c, simT())).reduce((a, c) => a + (c.movesPerHour || 28), 0);
 
   const header = (
     <Panel className="p-4" as="div">
@@ -218,7 +224,7 @@ export default function VesselDetail() {
             <DefRow label="Assigned cranes">{vessel.cranes.join(", ") || "—"}</DefRow>
             <DefRow label="Productivity">{rate ? `${rate} moves/h` : "—"}</DefRow>
           </dl>
-          <p className="eyebrow mt-3 pb-1">Quay cranes ({QUAY_CRANES.filter((c) => c.vesselId === vessel.id).length})</p>
+          <p className="eyebrow mt-3 pb-1">Quay cranes ({port.cranes.filter((c) => c.vesselId === vessel.id).length})</p>
           <CraneRows vesselId={vessel.id} />
         </div>
       ) : tab === "ais" ? (
@@ -243,4 +249,88 @@ export default function VesselDetail() {
       bottom={<BerthSchedule focusBerth={vessel.berth} title={`Berth ${vessel.berth} schedule`} />}
     />
   );
+}
+
+function LiveVesselDetail({ vessel, meta, tab, setTab }: { vessel: Vessel; meta: EntityMeta; tab: "overview" | "containers"; setTab: (t: Tab) => void }) {
+  const { goHome } = usePort();
+  const tabs: Array<["overview" | "containers", string]> = [
+    ["overview", "Overview"],
+    ["containers", "Pods"],
+  ];
+  const where = vessel.berth ? `Berth ${vessel.berth}` : "Anchorage";
+
+  const header = (
+    <Panel className="p-4" as="div">
+      <Link to="/vessels" className="inline-flex items-center gap-1.5 rounded-md text-[12.5px] font-semibold text-slate hover:text-ink">
+        <ArrowLeft className="h-3.5 w-3.5" /> Back to vessels
+      </Link>
+      <h1 className="mt-1.5 break-all text-[24px] font-extrabold leading-tight tracking-tight text-ink">{vessel.name}</h1>
+      <p className="mt-0.5 text-[12.5px] text-slate">
+        {vessel.line} · {where}
+      </p>
+    </Panel>
+  );
+
+  const inspector = (
+    <Panel className="w-full p-4" aria-label={`${vessel.name} details`}>
+      <header className="flex items-start gap-3">
+        <div className="grid h-10 w-10 shrink-0 place-items-center rounded-[10px] text-paper" style={{ background: vessel.hull }}>
+          <Ship className="h-5 w-5" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="eyebrow">{vessel.line} · {where}</p>
+          <h2 className="truncate text-[18px] font-bold leading-tight text-ink">{vessel.name}</h2>
+        </div>
+        <div className="flex gap-1.5">
+          <IconButton label="Center camera on vessel" onClick={goHome}>
+            <Locate className="h-4 w-4" />
+          </IconButton>
+          <Link to="/vessels" aria-label="Close" className="grid h-10 w-10 place-items-center rounded-[10px] border border-hairline bg-paper text-ink hover:bg-sand lg:h-9 lg:w-9">
+            <X className="h-4 w-4" />
+          </Link>
+        </div>
+      </header>
+      <div className="mt-2.5 pl-[52px]">
+        <StatusChip tone={meta.tone}>{meta.headline}</StatusChip>
+      </div>
+
+      <div role="tablist" aria-label="Node information" className="mt-4 flex gap-1 rounded-[10px] bg-sand/70 p-1">
+        {tabs.map(([k, label]) => (
+          <button
+            key={k}
+            role="tab"
+            type="button"
+            aria-selected={tab === k}
+            onClick={() => setTab(k)}
+            className={cn("min-h-9 flex-1 rounded-[8px] px-2 py-1.5 text-[12.5px] font-semibold transition-colors", tab === k ? "bg-paper text-ink shadow-sm" : "text-slate hover:text-ink")}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "overview" ? (
+        <div className="pt-3">
+          <div className="mb-1.5 flex justify-between text-[13px]">
+            <span className="font-semibold text-ink">Pod capacity used</span>
+            <span className="font-mono font-semibold tnum">{Math.round(meta.fill * 100)}%</span>
+          </div>
+          <ProgressBar value={meta.fill} tone={meta.tone} />
+          <MetaRows meta={meta} className="mt-3" />
+          {vessel.berth ? (
+            <>
+              <p className="eyebrow mt-3 pb-1">Quay cranes</p>
+              <CraneRows vesselId={vessel.id} />
+            </>
+          ) : null}
+        </div>
+      ) : (
+        <div className="pt-3">
+          <ContainerList vesselId={vessel.id} />
+        </div>
+      )}
+    </Panel>
+  );
+
+  return <HudLayout left={header} right={inspector} bottom={<BerthSchedule focusBerth={vessel.berth} />} />;
 }

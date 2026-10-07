@@ -7,6 +7,7 @@ import { MIN_T, SIM_START_SEC, TIMELINE_EVENTS, clockSnapshot, fmtClock, fmtDura
 import type { ClockSnapshot } from "@/sim/simStore";
 import { usePort } from "@/state/PortProvider";
 import { useHudHidden } from "@/state/hudVisibility";
+import { isLive } from "@/source/store";
 
 const REWIND_RATES = [-2, -8, -32];
 const FORWARD_RATES = [2, 8, 32];
@@ -200,6 +201,7 @@ export function TimeKeys() {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const el = e.target as HTMLElement | null;
       if (el?.closest("input, textarea, select, button, a, [contenteditable='true'], [role='dialog']")) return;
+      if (isLive()) return;
       if (e.code === "Space") {
         e.preventDefault();
         timeControl.toggle();
@@ -219,15 +221,16 @@ export function TimeKeys() {
   return null;
 }
 
-function PlayButton({ playing }: { playing: boolean }) {
+function PlayButton({ playing, disabled }: { playing: boolean; disabled?: boolean }) {
   return (
     <button
       type="button"
+      disabled={disabled}
       onClick={() => timeControl.toggle()}
       data-haptic="medium"
       aria-label={playing ? "Pause (Space)" : "Play (Space)"}
       title={playing ? "Pause (Space)" : "Play (Space)"}
-      className="mx-1 grid h-11 w-11 shrink-0 place-items-center rounded-full bg-ink text-paper shadow-panel transition-[transform,background-color] hover:bg-ink/90 active:scale-90"
+      className="mx-1 grid h-11 w-11 shrink-0 place-items-center rounded-full bg-ink text-paper shadow-panel transition-[transform,background-color] hover:bg-ink/90 active:scale-90 disabled:pointer-events-none disabled:opacity-30"
     >
       {playing ? <Pause className="h-[18px] w-[18px] fill-current" /> : <Play className="ml-0.5 h-[18px] w-[18px] fill-current" />}
     </button>

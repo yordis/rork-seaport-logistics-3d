@@ -4,11 +4,12 @@ import { useFrame, useThree } from "@react-three/fiber";
 import { CameraControls, CameraControlsImpl } from "@react-three/drei";
 import { hudInset } from "@/state/hudInset";
 import type { Selection } from "@/data/types";
-import { blockById, craneById, truckById, vesselById } from "@/data/port";
-import { containerById, shipmentById } from "@/data/containers";
+import { TRUCKS } from "@/data/port";
 import { facilityById } from "@/data/facilities";
-import { GATE_X, SHIP_Z, berthX } from "@/data/layout";
+import { GATE_X, SHIP_Z, quayShotX } from "@/data/layout";
 import { sceneRegistry } from "@/sim/simStore";
+import { berthXOf, currentPort, usePortSnapshot, findBlock, findContainer, findCrane, findShipment, findVessel } from "@/source/store";
+import { anchorPosition } from "@/data/layout";
 import type { CameraView } from "@/state/PortProvider";
 import { selKey, usePort } from "@/state/PortProvider";
 import { useBootRevealed } from "@/state/boot";
@@ -29,6 +30,13 @@ const VIEWS: Record<CameraView, Shot> = {
   logistics: { target: [30, 0, -150], offset: [120, 210, 250] },
 };
 
+/** The quay-facing view follows the berths in use, so a short quay is not framed off-centre. */
+function viewShot(view: CameraView): Shot {
+  const shot = VIEWS[view];
+  if (view !== "vessels") return shot;
+  return { ...shot, target: [quayShotX(shot.target[0], currentPort().berths), shot.target[1], shot.target[2]] };
+}
+
 /** Imperative camera API used by the HUD camera rail. */
 export const cameraApi: { current: CameraControls | null } = { current: null };
 
@@ -44,25 +52,29 @@ const fitFor = (aspect: number): number => (aspect >= 1.25 ? 1 : aspect >= 0.85 
 function shotFor(sel: Selection): Shot | null {
   switch (sel.kind) {
     case "vessel": {
-      const v = vesselById(sel.id);
+      const v = findVessel(sel.id);
       if (!v) return null;
-      if (v.inScene) return { target: [berthX(v.berth), 3, SHIP_Z], offset: [40, 50, 78], follow: `vessel:${v.id}` };
-      return { target: [berthX(v.berth), 0, SHIP_Z - 4], offset: [34, 44, 64] };
+      if (v.berth === 0 && v.anchorSlot !== undefined) {
+        const [x, z] = anchorPosition(v.anchorSlot);
+        return { target: [x, 3, z], offset: [40, 50, 78], follow: `vessel:${v.id}` };
+      }
+      if (v.inScene) return { target: [berthXOf(v.berth), 3, SHIP_Z], offset: [40, 50, 78], follow: `vessel:${v.id}` };
+      return { target: [berthXOf(v.berth), 0, SHIP_Z - 4], offset: [34, 44, 64] };
     }
     case "crane": {
-      const c = craneById(sel.id);
+      const c = findCrane(sel.id);
       return c ? { target: [c.x, 10, 15], offset: [36, 32, 60] } : null;
     }
     case "block": {
-      const b = blockById(sel.id);
+      const b = findBlock(sel.id);
       return b ? { target: [b.x, 2, b.z], offset: [28, 48, 56] } : null;
     }
     case "container": {
-      const c = containerById(sel.id);
+      const c = findContainer(sel.id);
       return c ? { target: [c.x, c.y, c.z], offset: [22, 30, 40] } : null;
     }
     case "truck": {
-      const t = truckById(sel.id);
+      const t = (currentPort().trucks ?? TRUCKS).find((truck) => truck.id === sel.id);
       return t ? { target: [GATE_X - 30, 1, -12], offset: [20, 26, 38], follow: `truck:${t.id}` } : null;
     }
     case "facility": {
@@ -72,12 +84,13 @@ function shotFor(sel: Selection): Shot | null {
       return { target: [f.x, 2, f.z], offset: [44 * s, 58 * s, 84 * s] };
     }
     case "shipment": {
-      const s = shipmentById(sel.id);
+      const s = findShipment(sel.id);
       if (!s) return null;
       if (s.truckId) return { target: [GATE_X - 40, 1, -14], offset: [44, 58, 80], follow: `truck:${s.truckId}` };
-      const c = containerById(s.containerIds[0]);
+      const c = findContainer(s.containerIds[0]);
       if (s.current <= 1 && s.direction === "import") return shotFor({ kind: "vessel", id: s.vesselId });
-      return c ? { target: [c.x, c.y, c.z], offset: [18, 26, 34] } : null;
+      if (c) return { target: [c.x, c.y, c.z], offset: [18, 26, 34] };
+      return s.vesselId ? shotFor({ kind: "vessel", id: s.vesselId }) : null;
     }
   }
   return null;
@@ -90,6 +103,7 @@ export function CameraRig() {
   const followKey = useRef<string | undefined>(undefined);
   const key = selKey(selection);
   const isRevealed = useBootRevealed();
+  const berthCount = usePortSnapshot().berths.length;
   const fit = useThree((s) => fitFor(s.size.width / Math.max(1, s.size.height)));
   const viewOff = useRef<{ x: number; y: number; w: number; h: number }>({ x: 0, y: 0, w: 0, h: 0 });
   const fitRef = useRef<number>(fit);
@@ -114,7 +128,7 @@ export function CameraRig() {
     const c = ref.current;
     // Hold the wide establishing shot under the boot screen; the fly-in plays as it lifts.
     if (!c || !isRevealed) return;
-    const shot = (selection ? shotFor(selection) : null) ?? VIEWS[view];
+    const shot = (selection ? shotFor(selection) : null) ?? viewShot(view);
     followKey.current = shot.follow;
     let target: V3 = shot.target;
     if (shot.follow) {
@@ -130,7 +144,7 @@ export function CameraRig() {
     const k = selection ? 1 + (f - 1) * 0.6 : f;
     const [ox, oy, oz] = shot.offset.map((o) => o * k);
     void c.setLookAt(tx + ox, ty + oy, tz + oz, tx, ty, tz, true);
-  }, [key, view, homeNonce, selection, isRevealed]);
+  }, [key, view, homeNonce, selection, isRevealed, berthCount]);
 
   // Rotation (portrait <-> landscape): keep the user's current framing and only ease the zoom so the same
   // part of the port stays in view, instead of re-flying the page shot and throwing away their pan/rotate.
