@@ -4,7 +4,7 @@ import { useFrame, useThree } from "@react-three/fiber";
 import { CameraControls, CameraControlsImpl } from "@react-three/drei";
 import { hudInset } from "@/state/hudInset";
 import type { Selection } from "@/data/types";
-import { truckById } from "@/data/port";
+import { TRUCKS } from "@/data/port";
 import { facilityById } from "@/data/facilities";
 import { GATE_X, SHIP_Z, quayShotX } from "@/data/layout";
 import { sceneRegistry } from "@/sim/simStore";
@@ -74,7 +74,7 @@ function shotFor(sel: Selection): Shot | null {
       return c ? { target: [c.x, c.y, c.z], offset: [22, 30, 40] } : null;
     }
     case "truck": {
-      const t = truckById(sel.id);
+      const t = (currentPort().trucks ?? TRUCKS).find((truck) => truck.id === sel.id);
       return t ? { target: [GATE_X - 30, 1, -12], offset: [20, 26, 38], follow: `truck:${t.id}` } : null;
     }
     case "facility": {

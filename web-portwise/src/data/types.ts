@@ -146,6 +146,10 @@ export interface Truck {
   route: RoutePoint[];
   speed: number;
   offset: number;
+  /** Play the route a single time from `offset` instead of looping; the truck stays hidden before and after. */
+  once?: boolean;
+  /** Not a real movement: a looping placeholder that only reflects steady-state data. Rendered as an empty grey tractor. */
+  ambient?: boolean;
   shipmentId?: string;
   baseWait?: number;
 }

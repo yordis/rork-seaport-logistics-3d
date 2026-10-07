@@ -14,6 +14,7 @@ export const SIM_SNAPSHOT: PortSnapshot = {
   overflow: null,
   kpis: null,
   shipments: null,
+  trucks: null,
   logistics: true,
   vocabulary: {
     vessel: "Vessel",

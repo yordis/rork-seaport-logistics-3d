@@ -1,7 +1,7 @@
-import type { Alert, Berth, BerthBooking, QuayCrane, RoutePoint, Truck, Vessel, YardBlock } from "./types";
-import { BLOCK_COL_X, BLOCK_ROW_Z, GATE_X, layoutBerths } from "./layout";
-import { AVE_N, AVE_S } from "./facilities";
+import type { Alert, Berth, BerthBooking, QuayCrane, Truck, Vessel, YardBlock } from "./types";
+import { BLOCK_COL_X, BLOCK_ROW_Z, layoutBerths } from "./layout";
 import { DRAYAGE_TRUCKS } from "./drayage";
+import { externalRoute, itvRoute } from "./routes";
 
 export const PORT_NAME = "Pasir Panjang Terminal";
 /** Port authority / city shown alongside the terminal name. */
@@ -364,86 +364,6 @@ export const ALERTS: Alert[] = [
   },
 ];
 
-const IN_LANE_X = 174;
-const OUT_LANE_X = 179;
-
-interface ExternalSpec {
-  gate: "A" | "B";
-  blockX: number;
-  rowZ: number;
-  load: boolean;
-  queue?: number;
-  queueX?: number;
-}
-
-/** Staging area → port avenue → gate → spine → yard lane → block → back out under the expressway. */
-function externalRoute({ gate, blockX, rowZ, load, queue, queueX = 224 }: ExternalSpec): RoutePoint[] {
-  const inZ = gate === "A" ? -3 : -15;
-  const outZ = gate === "A" ? -8 : -20;
-  const returnZ = rowZ === -49 ? -35 : rowZ - 14;
-  const sideX = blockX - 16;
-  const startStatus = queue ? "Queued" : "Called from staging";
-  const route: RoutePoint[] = [
-    { p: [AVE_S + 8, -124], hidden: true, load: !load, status: startStatus },
-    { p: [AVE_S, -124] },
-    { p: [AVE_S, inZ], status: queue ? "Queued" : "Arriving" },
-  ];
-  if (queue) route.push({ p: [queueX, inZ], wait: queue, status: "Queued" });
-  else route.push({ p: [GATE_X + 34, inZ], status: "Arriving" });
-  route.push(
-    { p: [GATE_X, inZ], wait: 3, status: "Entering" },
-    { p: [IN_LANE_X, inZ], status: "Entering" },
-    { p: [IN_LANE_X, rowZ] },
-    { p: [blockX, rowZ], wait: 7, load, status: "Handling" },
-    { p: [sideX, rowZ], status: "Exiting" },
-    { p: [sideX, returnZ] },
-    { p: [OUT_LANE_X, returnZ] },
-    { p: [OUT_LANE_X, outZ] },
-    { p: [GATE_X, outZ], wait: 3, status: "Exiting" },
-    { p: [AVE_N, outZ], status: "Departed" },
-    { p: [AVE_N, -104], status: "Departed" },
-  );
-  return route;
-}
-
-interface ItvSpec {
-  craneId: string;
-  blockId: string;
-  loading: boolean;
-}
-
-/** Quay crane ⇄ yard block shuttle along the apron and yard lanes. */
-function itvRoute({ craneId, blockId, loading }: ItvSpec): RoutePoint[] {
-  const crane = craneById(craneId);
-  const block = blockById(blockId);
-  if (!crane || !block) return [{ p: [0, 8] }, { p: [10, 8] }];
-  const cx = crane.x;
-  const bx = block.x;
-  const rowZ = block.z - 7;
-  const near = cx < bx ? bx - 16 : bx + 16;
-  const far = cx < bx ? bx + 16 : bx - 16;
-  if (!loading) {
-    return [
-      { p: [cx, 15], wait: 7, load: true, status: `Loading at ${craneId}` },
-      { p: [near, 15], status: "To yard" },
-      { p: [near, rowZ] },
-      { p: [bx, rowZ], wait: 6, load: false, status: `Grounding at ${blockId}` },
-      { p: [far, rowZ], status: "Back to crane" },
-      { p: [far, 8] },
-      { p: [cx, 8] },
-    ];
-  }
-  return [
-    { p: [bx, rowZ], wait: 6, load: true, status: `Picking at ${blockId}` },
-    { p: [far, rowZ], status: `To ${craneId}` },
-    { p: [far, 8] },
-    { p: [cx, 8] },
-    { p: [cx, 15], wait: 7, load: false, status: `Delivering to ${craneId}` },
-    { p: [near, 15], status: "Back to yard" },
-    { p: [near, rowZ] },
-  ];
-}
-
 const bx = (id: string): number => blockById(id)?.x ?? 0;
 
 export const TRUCKS: Truck[] = [
@@ -580,22 +500,27 @@ const ITV_DRIVERS = ["Luc Ngo", "Ravi Kumar", "Vinh Dinh", "Truong Mai", "Hai La
 const ITV_BOXES = ["#F2622E", "#1E3A66", "#D9B26A", "#4E7A5A", "#B5463A", "#4F6D8F"];
 
 TRUCKS.push(
-  ...ITV_SPECS.map(([id, craneId, blockId, loading, offset], i): Truck => ({
-    id,
-    plate: id,
-    carrier: "Pasir Panjang terminal fleet",
-    kind: "itv",
-    cab: "#E8A317",
-    driver: ITV_DRIVERS[i % ITV_DRIVERS.length],
-    containerColor: ITV_BOXES[i % ITV_BOXES.length],
-    speed: 10,
-    offset,
-    route: itvRoute({ craneId, blockId, loading }),
-  })),
+  ...ITV_SPECS.flatMap(([id, craneId, blockId, loading, offset], i): Truck[] => {
+    const crane = craneById(craneId);
+    const block = blockById(blockId);
+    if (!crane || !block) return [];
+    return [
+      {
+        id,
+        plate: id,
+        carrier: "Pasir Panjang terminal fleet",
+        kind: "itv",
+        cab: "#E8A317",
+        driver: ITV_DRIVERS[i % ITV_DRIVERS.length],
+        containerColor: ITV_BOXES[i % ITV_BOXES.length],
+        speed: 10,
+        offset,
+        route: itvRoute({ craneX: crane.x, craneLabel: craneId, blockX: block.x, blockZ: block.z, blockLabel: blockId, loading }),
+      },
+    ];
+  }),
 );
 
 TRUCKS.push(...DRAYAGE_TRUCKS);
 
 export const truckById = (id: string): Truck | undefined => TRUCKS.find((t) => t.id === id);
-
-export const GATE_TRUCK_IDS = TRUCKS.filter((t) => t.kind === "external").map((t) => t.id);

@@ -1,4 +1,4 @@
-import type { Alert, Berth, Container, QuayCrane, Shipment, StatusTone, Vessel, YardBlock } from "@/data/types";
+import type { Alert, Berth, Container, QuayCrane, Shipment, StatusTone, Truck, Vessel, YardBlock } from "@/data/types";
 
 export type SourceKind = "simulation" | "live";
 
@@ -51,6 +51,8 @@ export interface PortSnapshot {
   kpis: KpiReading[] | null;
   /** Shipments the source tracks itself; null when the built-in shipment catalogue applies. */
   shipments: Shipment[] | null;
+  /** Trucks the source drives itself; null when the built-in TRUCKS list applies. */
+  trucks: Truck[] | null;
   /** Whether the logistics district (facilities, drayage) is backed by this source. */
   logistics: boolean;
   vocabulary: PortVocabulary;

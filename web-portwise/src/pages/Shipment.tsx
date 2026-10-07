@@ -8,7 +8,7 @@ import { truckStatusTone } from "@/components/hud/TruckCard";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { GATE_TRUCK_IDS, truckById } from "@/data/port";
+import { TRUCKS } from "@/data/port";
 import { FEATURED_SHIPMENT_IDS, shipmentById } from "@/data/containers";
 import type { Shipment as ShipmentT } from "@/data/types";
 import type { PortSnapshot } from "@/source/model";
@@ -20,6 +20,8 @@ import { usePort } from "@/state/PortProvider";
 function GateTable() {
   useSimTick();
   const { open, selection } = usePort();
+  const port = usePortSnapshot();
+  const trucks = (port.trucks ?? TRUCKS).filter((t) => t.kind === "external");
   return (
     <Panel className="w-full p-4" aria-label="Gate traffic">
       <div className="flex items-center justify-between">
@@ -40,9 +42,8 @@ function GateTable() {
           </tr>
         </thead>
         <tbody>
-          {GATE_TRUCK_IDS.map((id) => {
-            const t = truckById(id);
-            if (!t) return null;
+          {trucks.map((t) => {
+            const id = t.id;
             const status = sim.truckStatus[id] ?? "—";
             const minutes = Math.max(0, Math.round((t.baseWait ?? 1) + simElapsedMin()));
             const active = selection?.kind === "truck" && selection.id === id;

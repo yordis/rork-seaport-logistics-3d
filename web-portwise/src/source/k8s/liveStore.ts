@@ -33,7 +33,7 @@ const subscribeTo = (set: Set<() => void>) => (fn: () => void): (() => void) => 
 
 function project(): void {
   projectTimer = null;
-  snapshot = projectPort(cluster, activity as BerthActivity);
+  snapshot = projectPort(cluster, activity as BerthActivity, K8S_PORT_MAPPING, Date.now());
   snapshotListeners.forEach((l) => l());
 }
 

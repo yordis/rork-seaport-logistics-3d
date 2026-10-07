@@ -13,3 +13,13 @@ describe("namespaceColor", () => {
     expect(palette).toContain(namespaceColor("team-y", palette));
   });
 });
+
+describe("trucks mapping", () => {
+  it("caps the wait for an unmatched Pulling comfortably over the lookback window", () => {
+    expect(K8S_PORT_MAPPING.trucks.pull.waitCapSec * 1000).toBeGreaterThan(K8S_PORT_MAPPING.trucks.window);
+  });
+
+  it("reuses the scheduler as the ITV carrier instead of duplicating the crane operator label", () => {
+    expect(K8S_PORT_MAPPING.trucks.schedule.carrier).toBe(K8S_PORT_MAPPING.crane.operator);
+  });
+});

@@ -22,7 +22,13 @@ const BOOM_SWING_SEC = 6;
 
 const nowMs = (): number => (typeof performance !== "undefined" ? performance.now() : Date.now());
 const realStart = nowMs();
+const epochAtStart = Date.now();
 const realT = (): number => (nowMs() - realStart) / 1000;
+
+/** Converts a wall-clock epoch (ms) into the same number space `simT()` returns while live. */
+export function epochToSimT(epochMs: number): number {
+  return (epochMs - epochAtStart) / 1000;
+}
 
 interface ClockState {
   live: boolean;

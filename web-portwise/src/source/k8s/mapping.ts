@@ -9,6 +9,8 @@ export interface PhaseStyle {
   tone: StatusTone;
 }
 
+const SCHEDULER = "kube-scheduler";
+
 export interface NodeStateStyle {
   headline: string;
   tone: StatusTone;
@@ -91,9 +93,41 @@ export const K8S_PORT_MAPPING = {
     /** A crane keeps working for about two lift cycles after the latest scheduling move. */
     activeWindowMs: 26_000,
     model: "Scheduler",
-    operator: "kube-scheduler",
+    operator: SCHEDULER,
     idleReason: "No recent scheduling",
     emptyReason: "Berth empty",
+  },
+  trucks: {
+    /** How far back to look at events for a truck trip, ms. */
+    window: 15 * 60_000,
+    maxTrucks: 24,
+    pull: {
+      defaultRegistry: "docker.io",
+      label: "Image pull",
+      status: "Pulling",
+      /** Kubelet reports Pulled without Pulling when the image is already on the node. */
+      cachedLabel: "Image cached",
+      cachedStatus: "Already on node",
+      cachedWaitSec: 6,
+      /** Wait cap for an unmatched Pulling event, s. Comfortably over `window` so an unresolved truck never visibly departs before a Pulled event arrives or it ages out. */
+      waitCapSec: 1800,
+      speed: 9,
+    },
+    schedule: {
+      carrier: SCHEDULER,
+      speed: 10,
+      cab: "#E8A317",
+      status: "Handing over",
+      handoverSec: 6,
+    },
+    /** Looping tractors between namespace blocks and the nodes running their pods, so the yard stays busy between events. */
+    shuttle: {
+      max: 12,
+      carrier: "kubelet",
+      speed: 10,
+      cab: "#E8A317",
+      spreadSec: 90,
+    },
   },
   shipments: {
     /** Workload kinds that become shipments, with the label prefix and consignee each one reads as. */

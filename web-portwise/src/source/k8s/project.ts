@@ -8,6 +8,7 @@ import type { K8sEvent, K8sNode, K8sPod, PodPhase } from "./types";
 import { toPodPhase } from "./types";
 import { K8S_PORT_MAPPING, namespaceColor } from "./mapping";
 import { collectWorkloads, projectShipments, resolveOwnership } from "./rollouts";
+import { buildTrucks } from "./trips";
 import type { K8sPortMapping, NodeStateStyle } from "./mapping";
 
 /** Per node name: scheduling moves the live store observed, as epoch ms. */
@@ -79,7 +80,7 @@ const restarts = (pod: K8sPod): number => (pod.status?.containerStatuses ?? []).
 
 const images = (pod: K8sPod): string[] => (pod.spec?.containers ?? []).map((c) => c.image ?? c.name);
 
-function eventTime(e: K8sEvent): string {
+export function eventTime(e: K8sEvent): string {
   return e.lastTimestamp ?? e.eventTime ?? e.firstTimestamp ?? e.metadata.creationTimestamp ?? "";
 }
 
@@ -89,7 +90,7 @@ function clock(iso: string): string {
 }
 
 /** Projects cluster state onto the port model. Pure: the same state and activity always produce the same snapshot. */
-export function projectPort(state: ClusterState, activity: BerthActivity = {}, m: K8sPortMapping = K8S_PORT_MAPPING): PortSnapshot {
+export function projectPort(state: ClusterState, activity: BerthActivity = {}, m: K8sPortMapping = K8S_PORT_MAPPING, nowMs: number = Date.now()): PortSnapshot {
   const nodes = values(state.nodes.items).sort((a, b) => byName(nodeName(a), nodeName(b)));
   const pods = values(state.pods.items).sort((a, b) => byName(a.metadata.namespace ?? "", b.metadata.namespace ?? "") || byName(a.metadata.name, b.metadata.name));
   const vesselIdOf = (name: string): string => `${m.ids.vessel}${name}`;
@@ -339,6 +340,7 @@ export function projectPort(state: ClusterState, activity: BerthActivity = {}, m
     overflow: overflow.length ? { label: m.yard.overflowLabel, groups: overflow.length, items: overflow.reduce((s, ns) => s + (counts.get(ns) ?? 0), 0) } : null,
     kpis,
     shipments: projectShipments(state, ownership, workloads, (uid) => containerOfPod.get(uid), vesselIdOf, m),
+    trucks: buildTrucks(state, { vessels, cranes, berths, blockOfNs, vesselIdOf }, m, nowMs),
     logistics: false,
     vocabulary: m.vocabulary,
   };

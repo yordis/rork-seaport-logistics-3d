@@ -7,7 +7,7 @@ const PATHS: Record<ResourceKey, { path: string; query?: string }> = {
   pods: { path: "/api/v1/pods" },
   namespaces: { path: "/api/v1/namespaces" },
   services: { path: "/api/v1/services" },
-  events: { path: "/api/v1/events", query: "fieldSelector=type%3DWarning" },
+  events: { path: "/api/v1/events" },
   deployments: { path: "/apis/apps/v1/deployments" },
   statefulsets: { path: "/apis/apps/v1/statefulsets" },
   daemonsets: { path: "/apis/apps/v1/daemonsets" },

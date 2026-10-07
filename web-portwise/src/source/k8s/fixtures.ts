@@ -19,14 +19,26 @@ export const pod = (name: string, namespace: string, rv = "1", opts: { phase?: s
 
 export const namespace = (name: string, rv = "1"): K8sNamespace => ({ metadata: { uid: `uid-ns-${name}`, name, resourceVersion: rv } });
 
-export const warning = (name: string, involved: K8sEvent["involvedObject"], rv = "1", at = "2026-01-01T10:00:00Z"): K8sEvent => ({
-  metadata: { uid: `uid-ev-${name}`, name, namespace: involved?.namespace, resourceVersion: rv },
-  type: "Warning",
-  reason: "BackOff",
-  message: "synthetic warning",
-  lastTimestamp: at,
-  involvedObject: involved,
+export interface EventOpts {
+  type?: string;
+  reason?: string;
+  message?: string;
+  involved?: K8sEvent["involvedObject"];
+  at?: string;
+  rv?: string;
+}
+
+export const event = (name: string, opts: EventOpts = {}): K8sEvent => ({
+  metadata: { uid: `uid-ev-${name}`, name, namespace: opts.involved?.namespace, resourceVersion: opts.rv ?? "1" },
+  type: opts.type ?? "Normal",
+  reason: opts.reason,
+  message: opts.message,
+  lastTimestamp: opts.at ?? "2026-01-01T10:00:00Z",
+  involvedObject: opts.involved,
 });
+
+export const warning = (name: string, involved: K8sEvent["involvedObject"], rv = "1", at = "2026-01-01T10:00:00Z"): K8sEvent =>
+  event(name, { type: "Warning", reason: "BackOff", message: "synthetic warning", involved, rv, at });
 
 export const ev = <T,>(type: WatchEventType, object: T): WatchEvent<T> => ({ type, object });
 

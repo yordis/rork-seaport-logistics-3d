@@ -35,7 +35,7 @@ export function SearchDialog() {
     return {
       vessels: port.vessels.filter((v) => has(v.name) || has(v.imo) || has(v.line)),
       cranes: port.cranes.filter((c) => has(c.id)),
-      trucks: TRUCKS.filter((t) => has(t.plate) || has(t.carrier)),
+      trucks: (port.trucks ?? TRUCKS).filter((t) => has(t.plate) || has(t.carrier)),
       blocks: port.blocks.filter((b) => has(`block ${b.id}`) || has(b.id) || (!!b.meta && has(b.meta.headline))),
       facilities: nq.length >= 2 && port.logistics ? FACILITIES.filter((f) => has(f.name) || has(f.short) || has(f.operator) || has(f.group)) : [],
       containers,
