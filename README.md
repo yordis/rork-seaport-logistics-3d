@@ -12,7 +12,7 @@ Watch vessels arrive, quay cranes work, yard blocks fill up, trucks clear the ga
 
 <br />
 
-<img src="web-portwise/public/og-image.jpg" alt="Portwise: live 3D map of Pasir Panjang Terminal with quay cranes, container yard and logistics district" width="100%" />
+<img src="docs/portwise-live-cluster.jpg" alt="Portwise in live cluster mode: Kubernetes nodes berthed as ships with pods stacked on deck, namespaces as yard blocks, and a pod detail card open" width="100%" />
 
 </div>
 
@@ -316,6 +316,7 @@ The whole mapping is data in `web-portwise/src/source/k8s/mapping.ts`: vocabular
 .
 ├── README.md
 ├── LICENSE
+├── docs/                          # README screenshots
 └── web-portwise/
     ├── index.html                 # Entry HTML, meta and Open Graph tags, Google Fonts
     ├── public/
